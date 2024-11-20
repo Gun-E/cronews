@@ -2,9 +2,6 @@ import Image from "next/image";
 
 const images = [
   "/images/1.png",
-  "/images/2.png",
-  "/images/3.png",
-  "/images/4.png",
 ];
 
 export default function Home() {
