@@ -1,52 +1,114 @@
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/variable/pretendardvariable.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+    --background: #ffffff;
+    --foreground: #171717;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+    :root {
+        --background: #0a0a0a;
+        --foreground: #ededed;
+    }
 }
 
 body {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-family: "Pretendard Variable", sans-serif;
-  background-color: #333333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: "Pretendard Variable", sans-serif;
+    background-color: #333333;
 }
-.crosscontainer{
-  position: relative;
-  background-color: #EFF0F4;
-  width: 393px;
-  height: 852px;
+/*img {*/
+/*    -webkit-user-drag: none; !* Safari와 WebKit 브라우저에서 지원 *!*/
+/*}*/
+
+.crosscontainer {
+    position: relative;
+    background-color: #EFF0F4;
+    width: 393px;
+    height: 852px;
 }
-.logo{
-  position: absolute;
-  top: 43px;
-  left: 21px;
+
+.logo {
+    position: absolute;
+    top: 43px;
+    left: 21px;
 }
-.gridcontainer{
-  position: absolute;
-  width: 324px;
-  height: 429px;
-  top : 152px;
-  right: 34px;
+
+.gridcontainer {
+    position: absolute;
+    width: 324px;
+    height: 429px;
+    top: 152px;
+    right: 34px;
+    background: #D2D4F6;
+    border-radius: 7px;
+    display: grid;
+    grid-template-columns: repeat(6, 47px);
+    grid-template-rows: repeat(8, 47px);
+    gap: 6px;
+    padding: 6px;
 }
-.textcontainer{
-  position: absolute;
-  background: #D2D4F6;
-  bottom: 154px;
-  left: 30px;
-  width: 333px;
-  height: 101px;
-  border-radius: 8.95px;
+.inputbox {
+    background-color: #E8F1F6;
+    border-radius: 7.82px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 20px;
+    color: white;
+    width: 100%;
+    height: 100%;
 }
+.textcontainer {
+    position: absolute;
+    padding: 15px;
+    color: #434CB1;
+    background: #D2D4F6;
+    bottom: 154px;
+    left: 30px;
+    width: 333px;
+    height: 101px;
+    border-radius: 8.95px;
+    line-height: 14.5px;
+    letter-spacing: 0;
+    font-weight: 500;
+}
+.wordinputs {
+    position: relative;
+    height: 100%;
+}
+
+.wordinput {
+    position: absolute;
+    bottom: 59.4px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 2.68px;
+}
+
+.ret {
+    width: 49.6px;
+    height: 49.6px;
+    background: #F8F8F8;
+    border-radius: 4.89px;
+    box-shadow: 0 3.12px 6.24px rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 18.61px;
+    font-weight: 600;
+    font-family: 'Pretendard', sans-serif;
+    color: #434CB1;
+}
+
+
