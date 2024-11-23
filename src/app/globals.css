@@ -46,7 +46,8 @@ img {
     width: 324px;
     height: 429px;
     top: 152px;
-    right: 34px;
+    left: 50%;
+    transform: translateX(-50%);
     background: #D2D4F6;
     border-radius: 7px;
     display: grid;
@@ -73,7 +74,8 @@ img {
     color: #434CB1;
     background: #D2D4F6;
     top: 597px;
-    left: 30px;
+    left: 50%;
+    transform: translateX(-50%);
     width: 333px;
     height: auto;
     border-radius: 8.95px;
@@ -137,5 +139,24 @@ img {
     margin-top: 2.5rem;
     text-decoration-line: underline;
 }
-
+.clock-container{
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4.57px;
+}
+.clock-container .clock-text {
+    font-size: 16.22px;
+    font-weight: 500;
+    color: #474C88;
+}
+.progresscontainer{
+    position: absolute;
+    top: 117.22px;
+    left: 47.17px;
+ }
 

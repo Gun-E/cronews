@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from "react";
-import {router} from "next/client";
 import Link from "next/link";
 
 export default function Home(): JSX.Element {
@@ -103,7 +102,7 @@ export default function Home(): JSX.Element {
                 width={100.58}
                 height={17.28}
             />
-            <div className="absolute top-[90px] left-[163px] flex items-center justify-center gap-[4.57px]">
+            <div className="clock-container">
                 <Image
                     src="/images/clock.svg"
                     alt="clock"
@@ -111,12 +110,12 @@ export default function Home(): JSX.Element {
                     height={15.22}
                     className="object-cover"
                 />
-                <h1 className="text-[16.22px] font-medium text-[#474C88] font-pretendard">
+                <h1 className="clock-text">
                     {formatTime(time)}
                 </h1>
             </div>
 
-            <div style={{position: 'absolute', top: '117.22px', left: '47.17px'}}>
+            <div className="progresscontainer">
                 <div
                     className="absolute top-0 left-0 w-[297.65px] h-[12.78px] bg-white rounded-[21.91px]"
                     style={{
