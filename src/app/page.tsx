@@ -2,6 +2,8 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from "react";
+import {router} from "next/client";
+import Link from "next/link";
 
 export default function Home(): JSX.Element {
     const [time, setTime] = useState<number>(30 * 60);
@@ -87,6 +89,9 @@ export default function Home(): JSX.Element {
         }
         return clueIndices === selectedClueIndex ? '#515DF1' : '#8E95EF';
     };
+    const isSubmitDisabled = (): boolean => {
+        return textArray.some((text, index) => words[index][0] !== '' && text === '');
+    };
 
     return (
         <div className="crosscontainer">
@@ -159,6 +164,22 @@ export default function Home(): JSX.Element {
                     </a>
                 </div>
             )}
+            <Link
+                href={isSubmitDisabled() ? "#" : "/easter-eggs"} // 비활성화 상태에서는 링크 없음
+                className="submitbtn"
+                style={{
+                    pointerEvents: isSubmitDisabled() ? "none" : "auto",
+                    backgroundColor: isSubmitDisabled() ? "#878787" : "#515DF1",
+                    textAlign: "center",
+                    padding: "10px 20px",
+                    borderRadius: "5px",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    textDecoration: "none",
+                }}
+            >
+                제출
+            </Link>
         </div>
     );
 }

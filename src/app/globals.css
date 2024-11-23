@@ -6,14 +6,14 @@
 
 
 :root {
-    --background: #ffffff;
-    --foreground: #171717;
+    --background: #EFF0F4;
+    --foreground: #EFF0F4;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --background: #0a0a0a;
-        --foreground: #ededed;
+        --background: #EFF0F4;
+        --foreground: #EFF0F4;
     }
 }
 
@@ -24,9 +24,9 @@ body {
     font-family: "Pretendard Variable", sans-serif;
     background-color: #333333;
 }
-/*img {*/
-/*    -webkit-user-drag: none; !* Safari와 WebKit 브라우저에서 지원 *!*/
-/*}*/
+img {
+    -webkit-user-drag: none; /* Safari와 WebKit 브라우저에서 지원 */
+}
 
 .crosscontainer {
     position: relative;
@@ -108,7 +108,34 @@ body {
     font-family: 'Pretendard', sans-serif;
     color: #434CB1;
 }
-
-
+.submitbtn{
+    position: absolute;
+    width: 190px;
+    height: 37px;
+    bottom: 59.4px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #515DF1;
+    color: white;
+    border-radius: 8.95px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.eggs{
+    background-color: #EFF0F4;
+    width: 393px;
+    height: 852px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center
+}
+.bigdata{
+    margin-top: 2.5rem;
+    text-decoration-line: underline;
+}
 
 
