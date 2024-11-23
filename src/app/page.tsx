@@ -1,50 +1,41 @@
-"use client"
+"use client";
 
 import Image from 'next/image';
-import {useEffect, useState} from "react";
+import { useEffect, useState } from "react";
 
-export default function Home() {
-    const [time, setTime] = useState(30 * 60);
-    const totalTime = 30 * 60;
+export default function Home(): JSX.Element {
+    const [time, setTime] = useState<number>(30 * 60);
+    const totalTime: number = 30 * 60;
 
-    const [textArray, setTextArray] = useState<string[]>([
-        '', '', '', '', '', '',
-        '', '', '캐', '', '', '',
-        '', '매', '치', '컷', '', '',
-        '듀', '스', '', '', '', '',
-        '', '티', '저', '레', '더', '',
-        '', '지', '', '', '', '',
-        '', '', '', '', '', '',
-        '', '', '', '', '', '',
-    ]);
-    const words = [
-        '캐치',
-        // '야구 경기에서 야수가 인플라이트의 타구 또는 송구를 손 또는 글러브로 확실하게 받아서 정확하게 움켜 쥐는 행위. 포구(捕球)라고도 함'
-        '매치컷',
-        '듀스',
-        // '테니스, 탁구, 배구 등의 구기 종목에서 승패를 가르는 마지막 1점을 두고 동점을 이루고 있는 것'
-        '매스티지',
-        //'가격은 명품에 비해 싸지만 품질면에서는 명품에 근접한 상품을 지칭'
-        '티저레더',
-    ];
-    const horizontalClues = [
-        '시각적으로 유사한 두 장면(숏, shot)를 이어 붙이는 필름 편집 방식',
-        '테니스, 탁구, 배구 등의 구기 종목에서 승패를 가르는 마지막 1점을 두고 동점을 이루고 있는 것',
-        '잠재투자자에게 매각물건에 대한 간략한 정보를 제공, 투자를 유도하는 투자 안내문',
+    const words: [string, (number | number[])][] = [
+        ['서', 0], ['울', 0], ['지', [0,1]], ['하', 0], ['철', 0], ['', -1],
+        ['', -1], ['', -1], ['성', 1], ['', -1], ['', -1], ['', -1],
+        ['', -1], ['임', 2], ['원', [1,2]], ['인', [2,3]], ['사', 2], ['', -1],
+        ['', -1], ['', -1], ['', -1], ['력', 3], ['', -1], ['국', 5],
+        ['', -1], ['', -1],  ['', -1],['충', 3], ['', -1], ['민', 5],
+        ['최', 4], ['고', 4], ['위', 4], ['원', [3,4]], ['회', 4], ['의', [4,5]],
+        ['', -1], ['', -1], ['', -1], ['', -1], ['', -1], ['힘', 5],
+        ['', -1], ['', -1], ['', -1], ['', -1], ['', -1], ['', -1],
     ];
 
-    const verticalClues = [
-        '야구 경기에서 야수가 인플라이트의 타구 또는 송구를 손 또는 글러브로 확실하게 받아서 정확하게 움켜 쥐는 행위. 포구(捕球)라고도 함',
-        '가격은 명품에 비해 싸지만 품질면에서는 명품에 근접한 상품을 지칭',
+    const clues: string[] = [
+        '철도노조와 함께 총파업을 예고하고 태업에 들어간 교통기관은 어디입니까?',
+        '현대자동차 브랜드 마케팅 본부장의 이름은?',
+        'LG CNS가 이번에 발표한 것은 어떤 종류의 인사였습니까?',
+        '철도노조의 주요 요구사항 중 하나로, 신규 노선 운영을 위해 필요한 것은 무엇입니까?',
+        '이 발표가 이루어진 회의체의 명칭은 무엇입니까?',
+        '박찬대 원내대표가 기자회견에서 어느 정당에 대해 국정조사 협조를 촉구했나요?',
     ];
 
-    const formatTime = (seconds: number) => {
+    const [textArray, setTextArray] = useState<string[]>(words.map(() => ''));
+
+    const formatTime = (seconds: number): string => {
         const minutes = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "00")}`;
     };
 
-    const calculateWidth = () => {
+    const calculateWidth = (): number => {
         return (time / totalTime) * 297.65;
     };
 
@@ -62,18 +53,40 @@ export default function Home() {
         return () => clearInterval(interval);
     }, []);
 
-    const getBackgroundColor = (char: string) => {
-        if (char === '') {
-            return '#E8F1F6'; // Default empty cell color
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>, index: number): void => {
+        const input = e.target.value.trim();
+        const koreanRegex = /^[가-힣]{1}$/;
+
+        if (input === "" || koreanRegex.test(input)) {
+            const newTextArray = [...textArray];
+            newTextArray[index] = input;
+            setTextArray(newTextArray);
         }
-        return '#8E95EF'; // Color for the cells that need input
     };
 
-    // Handle input change (updating the text array when user types)
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-        const newTextArray = [...textArray];
-        newTextArray[index] = e.target.value;
-        setTextArray(newTextArray);
+    // State to track selected clue index
+    const [selectedClueIndex, setSelectedClueIndex] = useState<number | null>(null);
+
+    const handleFocus = (index: number) => {
+        const [, clueIndex] = words[index];
+        if (Array.isArray(clueIndex)) {
+            setSelectedClueIndex(clueIndex[0]);
+        } else if (clueIndex >= 0) {
+            setSelectedClueIndex(clueIndex);
+        } else {
+            setSelectedClueIndex(null);
+        }
+    };
+
+    const getBackgroundColor = (index: number): string => {
+        const [, clueIndices] = words[index];
+        if (words[index][0] === '') {
+            return '#E8F1F6';
+        }
+        if (Array.isArray(clueIndices)) {
+            return clueIndices.includes(selectedClueIndex ?? -1) ? '#515DF1' : '#8E95EF';
+        }
+        return clueIndices === selectedClueIndex ? '#515DF1' : '#8E95EF';
     };
 
     return (
@@ -113,38 +126,28 @@ export default function Home() {
                         key={index}
                         className="inputbox"
                         style={{
-                            backgroundColor: getBackgroundColor(char),
+                            backgroundColor: getBackgroundColor(index),
                         }}
                     >
-                        {char === '' ? (
+                        {words[index][0] === '' && words[index][1] === -1 ? null : (
                             <input
                                 type="text"
                                 maxLength={1}
+                                onFocus={() => handleFocus(index)} // Handle focus event
                                 onChange={(e) => handleInputChange(e, index)}
                                 className="w-full h-full text-center border-none bg-transparent outline-none"
-                                value={char}
+                                value={textArray[index]}
                             />
-                        ) : (
-                            char
                         )}
                     </div>
                 ))}
             </div>
 
-
-            {horizontalClues.map((clue, index) => (
-                <div className="textcontainer" key={index}>{index + 1}. {clue}</div>
-            ))}
-
-            <div className="wordinputs">
-                <div className="wordinput">
-                    {/*글자 크기에 맞는 입력란*/}
-                    <div className="ret"></div>
-                    <div className="ret"></div>
-                    <div className="ret"></div>
-                    <div className="ret"></div>
+            {selectedClueIndex !== null && (
+                <div className="textcontainer">
+                    {clues[selectedClueIndex]}
                 </div>
-            </div>
+            )}
         </div>
     );
 }
