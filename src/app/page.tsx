@@ -64,7 +64,6 @@ export default function Home(): JSX.Element {
         }
     };
 
-    // State to track selected clue index
     const [selectedClueIndex, setSelectedClueIndex] = useState<number | null>(null);
 
     const handleFocus = (index: number) => {
@@ -113,7 +112,12 @@ export default function Home(): JSX.Element {
             </div>
 
             <div style={{position: 'absolute', top: '117.22px', left: '47.17px'}}>
-                <div className="absolute top-0 left-0 w-[297.65px] h-[12.78px] bg-white rounded-[21.91px]"/>
+                <div
+                    className="absolute top-0 left-0 w-[297.65px] h-[12.78px] bg-white rounded-[21.91px]"
+                    style={{
+                        boxShadow: '0 7.3px 14.61px 0 rgba(54, 16, 166, 0.25)',
+                    }}
+                />
                 <div
                     className="absolute top-0 left-0 h-[12.78px] bg-[#8E95EF] rounded-[21.91px]"
                     style={{width: `${calculateWidth()}px`, transition: 'width 1s ease-out'}}
