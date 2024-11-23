@@ -18,13 +18,13 @@ export default function Home(): JSX.Element {
         ['', -1], ['', -1], ['', -1], ['', -1], ['', -1], ['', -1],
     ];
 
-    const clues: string[] = [
-        '철도노조와 함께 총파업을 예고하고 태업에 들어간 교통기관은 어디입니까?',
-        '현대자동차 브랜드 마케팅 본부장의 이름은?',
-        'LG CNS가 이번에 발표한 것은 어떤 종류의 인사였습니까?',
-        '철도노조의 주요 요구사항 중 하나로, 신규 노선 운영을 위해 필요한 것은 무엇입니까?',
-        '이 발표가 이루어진 회의체의 명칭은 무엇입니까?',
-        '박찬대 원내대표가 기자회견에서 어느 정당에 대해 국정조사 협조를 촉구했나요?',
+    const clues: [string, string][] = [
+        ['철도노조와 함께 총파업을 예고하고 태업에 들어간 교통기관은 어디입니까?', 'https://www.newscj.com/news/articleView.html?idxno=3202489'],
+        ['현대자동차 브랜드 마케팅 본부장의 이름은?', 'https://www.ajunews.com/view/20241121104052101'],
+        ['LG CNS가 이번에 발표한 것은 어떤 종류의 인사였습니까?', 'https://www.businesspost.co.kr/BP?command=article_view&num=373762'],
+        ['철도노조의 주요 요구사항 중 하나로, 신규 노선 운영을 위해 필요한 것은 무엇입니까?', 'https://www.pressian.com/pages/articles/2024112112144836499'],
+        ['이 발표가 이루어진 회의체의 명칭은 무엇입니까?', 'https://www.inews24.com/view/1785077'],
+        ['박찬대 원내대표가 기자회견에서 어느 정당에 대해 국정조사 협조를 촉구했나요?', 'https://news.kbs.co.kr/news/pc/view/view.do?ncd=8111700'],
     ];
 
     const [textArray, setTextArray] = useState<string[]>(words.map(() => ''));
@@ -145,7 +145,14 @@ export default function Home(): JSX.Element {
 
             {selectedClueIndex !== null && (
                 <div className="textcontainer">
-                    {clues[selectedClueIndex]}
+                    <a
+                        href={clues[selectedClueIndex][1]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-black underline"
+                    >
+                        {clues[selectedClueIndex][0]}
+                    </a>
                 </div>
             )}
         </div>

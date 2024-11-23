@@ -72,10 +72,10 @@ body {
     padding: 15px;
     color: #434CB1;
     background: #D2D4F6;
-    bottom: 154px;
+    top: 597px;
     left: 30px;
     width: 333px;
-    height: 101px;
+    height: auto;
     border-radius: 8.95px;
     font-weight: 500;
 }
