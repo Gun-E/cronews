@@ -1,17 +1,62 @@
-# 크로뉴스 - 저너러티브
-## 2024 뉴스빅데이터 해커톤
-![Slide 16_9 - 2](https://github.com/user-attachments/assets/3cd90352-f3e3-4be6-813f-bbe2aae5f64a)
-![Slide 16_9 - 25](https://github.com/user-attachments/assets/0d929fa4-dc5f-444e-ac44-451a32e4572f)
-![Slide 16_9 - 6](https://github.com/user-attachments/assets/5ade0016-4d0b-4ec1-bd7a-2b1fb66a39b8)
-![Slide 16_9 - 26](https://github.com/user-attachments/assets/e0412f2c-1b43-4cc8-89f2-f96ed6297c74)
-![Slide 16_9 - 27](https://github.com/user-attachments/assets/d996b960-0e39-4924-b8b2-30897c3af94e)
-![Slide 16_9 - 10](https://github.com/user-attachments/assets/d17c0188-a72b-40c3-98a6-f98fb43b1652)
-![Slide 16_9 - 9](https://github.com/user-attachments/assets/8b3870d4-1cfd-439b-9cd1-00bb4a2af08a)
-![Slide 16_9 - 13](https://github.com/user-attachments/assets/30f91b0e-01ea-4393-a248-35c6063cbcbe)
-![Slide 16_9 - 14](https://github.com/user-attachments/assets/615877f1-ff7d-4a67-b064-edf94241c6b8)
-![Slide 16_9 - 17](https://github.com/user-attachments/assets/9421e510-b395-46fb-8368-1f7d89876f44)
-![Slide 16_9 - 20](https://github.com/user-attachments/assets/cd9cfa6b-973b-4e2b-a9f9-814976e6fae4)
-![Slide 16_9 - 18](https://github.com/user-attachments/assets/d7752fc0-cafe-41f7-930b-26b4f145f5ed)
-![Slide 16_9 - 16](https://github.com/user-attachments/assets/2e216214-4562-4c4c-905e-0e7bb0e87f22)
-![Slide 16_9 - 21](https://github.com/user-attachments/assets/9e3ab87b-2075-49c7-bc18-aaf32a7d7967)
-![Slide 16_9 - 33](https://github.com/user-attachments/assets/d344b1f8-65c1-4c4a-abb2-6e2b8e7387aa)
+# Cronews
+
+2024 뉴스 빅데이터 해커톤에서 진행한 뉴스 기반 가로세로 퀴즈 서비스의 프론트엔드 프로토타입입니다. 뉴스를 직접 읽지 않는 사용자도 게임을 통해 시사 키워드를 접하고, 관련 기사로 자연스럽게 이동하도록 설계했습니다.
+
+[Project Page](https://9un.site/projects/news-bigdata-hackathon)
+
+![Cronews preview](https://github.com/user-attachments/assets/3cd90352-f3e3-4be6-813f-bbe2aae5f64a)
+
+## Overview
+
+- 뉴스 키워드를 기반으로 한 가로세로 낱말 퀴즈
+- 제한 시간과 진행 바를 활용한 게임형 사용자 경험
+- 퀴즈 칸 선택 시 관련 힌트와 기사 링크 제공
+- 제출 완료 후 체험 종료 페이지로 이동
+- 해커톤 발표와 시연을 위한 모바일형 프로토타입 UI
+
+## Tech Stack
+
+- Next.js 15
+- React 19 RC
+- TypeScript
+- Tailwind CSS
+
+## Main Features
+
+### Crossword News Quiz
+
+뉴스 데이터에서 도출한 시사 키워드를 가로세로 퀴즈 형태로 제공합니다. 사용자는 정답을 직접 입력하며 키워드를 접하고, 모르는 문제는 힌트와 연결된 기사 링크를 통해 원문 맥락을 확인할 수 있습니다.
+
+### Game Based Learning Flow
+
+뉴스를 읽는 행위에 부담을 느끼는 사용자도 게임을 통해 시사 이슈를 접할 수 있도록 제한 시간, 진행 바, 입력 칸 강조 효과를 구성했습니다. 뉴스 학습을 정보 탐색이 아니라 플레이 경험으로 바꾸는 데 초점을 맞췄습니다.
+
+### News Article Connection
+
+각 문제는 실제 기사 링크와 연결됩니다. 사용자가 퀴즈를 풀다가 궁금한 키워드를 발견하면 해당 기사로 이동할 수 있어, 게임 이후에도 뉴스 소비로 이어지는 흐름을 만들었습니다.
+
+## Project Structure
+
+```text
+src
+├── app
+│   ├── easter-eggs
+│   ├── video
+│   ├── layout.tsx
+│   └── page.tsx
+└── app/globals.css
+
+public
+├── images
+└── video.mp4
+```
+
+## Result
+
+- 한국언론진흥재단 주최 2024 뉴스 빅데이터 해커톤 최우수상
+- 120여 개 참가팀 중 상위 10개 본선팀 진출
+- 팀장과 개발 PM을 맡아 서비스 기획 전반, 사용자 흐름 정리, 웹 개발을 담당
+
+## Focus
+
+이 저장소는 해커톤 시연을 위한 프론트엔드 프로토타입입니다. 전체 프로젝트에서는 빅카인즈 API와 LLM 기반 뉴스 키워드 생성 흐름을 함께 기획했으며, 이 프론트엔드는 사용자가 실제로 퀴즈를 풀고 기사로 이동하는 경험을 보여주는 역할을 담당했습니다.
