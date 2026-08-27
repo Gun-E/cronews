@@ -72,6 +72,12 @@ main { min-height: 100vh; padding: clamp(16px, 4vw, 48px); }
 .login-card input:focus { border-color: var(--brand); }
 .guest-link { display: block; margin-top: 18px; color: var(--muted); text-align: center; }
 .login-message { color: var(--brand) !important; font-weight: 700; }
+.signed-player { display: grid; gap: 4px; margin: 24px 0 16px; padding: 16px; border-radius: 13px; background: #f2f3ff; text-align: left; }
+.signed-player span { color: var(--muted); font-size: 12px; }
+.signed-player strong { color: var(--brand); font-size: 18px; }
+.choice-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--muted); font-size: 12px; }
+.choice-divider::before, .choice-divider::after { content: ""; flex: 1; height: 1px; background: #e5e6ee; }
+.login-submit { width: 100%; padding: 14px; border: 2px solid var(--brand); border-radius: 12px; background: white; color: var(--brand); font-weight: 800; cursor: pointer; }
 .ranking-shell { width: min(820px, 100%); margin: auto; }
 .ranking-shell > header { display: flex; gap: 14px; align-items: center; margin-bottom: 48px; }
 .ranking-shell > header a { color: var(--brand); font-size: 27px; font-weight: 900; letter-spacing: -.05em; text-decoration: none; }

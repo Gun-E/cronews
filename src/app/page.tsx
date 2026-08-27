@@ -14,7 +14,8 @@ const sample = generatePuzzle([
   { id: "information", answer: "정보통신", question: "정보 처리와 원거리 전달 기술을 함께 이르는 말은?" },
 ], 11);
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ submit?: string }> }) {
+  const query = await searchParams;
   const { data: authData } = await (await createSupabaseServerClient()).auth.getUser();
   let daily: { id: string; editionDate: string; board: PuzzleBoard } | null = null;
   try {
@@ -23,5 +24,5 @@ export default async function Home() {
   } catch (error) {
     console.error("daily puzzle unavailable", error);
   }
-  return <main><PuzzleGame puzzle={daily?.board ?? sample} puzzleId={daily?.id} editionDate={daily?.editionDate} accountName={authData.user?.email?.split("@")[0]} /></main>;
+  return <main><PuzzleGame puzzle={daily?.board ?? sample} puzzleId={daily?.id} editionDate={daily?.editionDate} accountName={authData.user?.email?.split("@")[0]} resumeSubmission={query.submit === "pending"} /></main>;
 }
