@@ -94,3 +94,10 @@ CREATE INDEX "articles_fingerprint_idx" ON "articles" USING btree ("fingerprint"
 CREATE UNIQUE INDEX "news_sources_feed_url_idx" ON "news_sources" USING btree ("feed_url");--> statement-breakpoint
 CREATE UNIQUE INDEX "puzzles_edition_category_idx" ON "puzzles" USING btree ("edition_date","category");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_runs_idempotency_idx" ON "workflow_runs" USING btree ("idempotency_key");
+--> statement-breakpoint
+INSERT INTO "news_sources" ("name", "homepage_url", "feed_url", "category", "trust_weight") VALUES
+  ('연합뉴스', 'https://www.yna.co.kr', 'https://www.yna.co.kr/rss/news.xml', 'ALL', 90),
+  ('한겨레', 'https://www.hani.co.kr', 'https://www.hani.co.kr/rss/', 'ALL', 80),
+  ('동아일보', 'https://www.donga.com', 'https://rss.donga.com/total.xml', 'ALL', 80),
+  ('경향신문', 'https://www.khan.co.kr', 'https://www.khan.co.kr/rss/rssdata/total_news.xml', 'ALL', 80)
+ON CONFLICT ("feed_url") DO NOTHING;
