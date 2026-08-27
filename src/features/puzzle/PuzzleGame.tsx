@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PuzzleBoard } from "@/server/puzzle/types";
 
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
@@ -17,6 +17,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [usedHintIds, setUsedHintIds] = useState<string[]>([]);
+  const composingIndex = useRef<number | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(storageKey);
@@ -45,13 +46,15 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   const cellKey = (word: typeof active, index: number) => `${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`;
   const answers = useMemo(() => Object.fromEntries(puzzle.words.map((word) => [word.id, [...word.answer].map((_, index) => entries[cellKey(word, index)] ?? "").join("")])), [entries, puzzle.words]);
   const filled = useMemo(() => puzzle.words.filter((word) => [...word.answer].every((_, index) => Boolean(entries[cellKey(word, index)]))).length, [entries, puzzle.words]);
-  const updateCharacter = (index: number, value: string) => {
-    const character = [...value.normalize("NFC").replace(/\s/g, "").toUpperCase()].at(-1) ?? "";
-    const next = { ...entries, [cellKey(active, index)]: character };
-    if (!character) delete next[cellKey(active, index)];
+  const updateCharacters = (index: number, value: string, moveFocus = true) => {
+    const characters = [...value.normalize("NFC").replace(/\s/g, "").toUpperCase()];
+    const next = { ...entries };
+    if (!characters.length) delete next[cellKey(active, index)];
+    else characters.slice(0, active.answer.length - index).forEach((character, offset) => { next[cellKey(active, index + offset)] = character; });
     setEntries(next);
     window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: Date.now() - elapsed * 1000, entries: next, name: displayName, usedHintIds }));
-    if (character && index < active.answer.length - 1) window.setTimeout(() => document.getElementById(`answer-${active.id}-${index + 1}`)?.focus(), 0);
+    const nextIndex = Math.min(index + Math.max(characters.length, 1), active.answer.length - 1);
+    if (moveFocus && characters.length && index < active.answer.length - 1) window.setTimeout(() => document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus(), 0);
   };
   const useHint = () => {
     if (!active.hint || usedHintIds.includes(active.id)) return;
@@ -88,7 +91,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
           return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => setSelected(word.id)}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>;
         }))}
       </div>
-      <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><div className="letter-inputs" aria-label={`${active.answer.length}글자 정답 입력`}>{[...active.answer].map((_, index) => <input id={`answer-${active.id}-${index}`} key={`${active.id}-${index}`} aria-label={`${index + 1}번째 글자`} value={entries[cellKey(active, index)] ?? ""} maxLength={1} disabled={Boolean(result)} onChange={(event) => updateCharacter(index, event.target.value)} onKeyDown={(event) => { if (event.key === "Backspace" && !entries[cellKey(active, index)] && index > 0) document.getElementById(`answer-${active.id}-${index - 1}`)?.focus(); }} autoComplete="off" inputMode="text" />)}</div><div className="hint-area">{usedHintIds.includes(active.id) ? <p><strong>힌트</strong>{active.hint}</p> : <button type="button" onClick={useHint} disabled={!active.hint || Boolean(result)}>힌트 보기 <span>사용 시 랭킹에 반영 · {usedHintIds.length}/{puzzle.words.length}</span></button>}</div><div className="clue-list">{puzzle.words.map((word, index) => <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{usedHintIds.includes(word.id) && <small>힌트 사용</small>}</button>)}</div><button className="submit" type="button" onClick={() => setShowSubmit(true)} disabled={Boolean(result)}>{result ? "제출 완료" : "정답 제출"}</button></aside>
+      <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><div className="letter-inputs" aria-label={`${active.answer.length}글자 정답 입력`}>{[...active.answer].map((_, index) => <input id={`answer-${active.id}-${index}`} key={`${active.id}-${index}`} aria-label={`${index + 1}번째 글자`} value={entries[cellKey(active, index)] ?? ""} maxLength={1} disabled={Boolean(result)} onCompositionStart={() => { composingIndex.current = index; }} onCompositionEnd={(event) => { composingIndex.current = null; updateCharacters(index, event.currentTarget.value, true); }} onChange={(event) => updateCharacters(index, event.target.value, composingIndex.current !== index)} onPaste={(event) => { const pasted = event.clipboardData.getData("text"); if ([...pasted].length > 1) { event.preventDefault(); updateCharacters(index, pasted, true); } }} onKeyDown={(event) => { if (event.key === "Backspace" && !entries[cellKey(active, index)] && index > 0) document.getElementById(`answer-${active.id}-${index - 1}`)?.focus(); }} autoComplete="off" inputMode="text" />)}</div><div className="hint-area">{usedHintIds.includes(active.id) ? <p><strong>힌트</strong>{active.hint}</p> : <button type="button" onClick={useHint} disabled={!active.hint || Boolean(result)}>힌트 보기 <span>사용 시 랭킹에 반영 · {usedHintIds.length}/{puzzle.words.length}</span></button>}</div><div className="clue-list">{puzzle.words.map((word, index) => <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{usedHintIds.includes(word.id) && <small>힌트 사용</small>}</button>)}</div><button className="submit" type="button" onClick={() => setShowSubmit(true)} disabled={Boolean(result)}>{result ? "제출 완료" : "정답 제출"}</button></aside>
     </div>
     {showSubmit && <div className="modal-backdrop"><div className="result-card submit-choice" role="dialog" aria-modal="true" aria-labelledby="submit-title"><button className="close" onClick={() => setShowSubmit(false)} aria-label="닫기">×</button><span className="eyebrow">정답 제출</span><h2 id="submit-title">기록을 어떻게 남길까요?</h2><p>답안과 소요 시간은 그대로 유지됩니다. 로그인하면 계정 경쟁 랭킹에 기록됩니다.</p>{accountName ? <div className="signed-player"><span>로그인 계정</span><strong>{accountName}</strong></div> : <><label>비회원 닉네임<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={20} placeholder="예: 뉴스왕" /></label><button className="submit" onClick={submit} disabled={submitting}>{submitting ? "채점 중…" : "닉네임으로 제출"}</button><div className="choice-divider"><span>또는</span></div><button className="login-submit" type="button" onClick={continueWithLogin}>로그인하고 경쟁 랭킹에 제출</button></>}{accountName && <button className="submit" onClick={submit} disabled={submitting}>{submitting ? "채점 중…" : `${accountName}(으)로 제출`}</button>}{error && <p className="error">{error}</p>}</div></div>}
     {result && <div className="modal-backdrop"><div className="result-card result celebration" role="dialog" aria-modal="true" aria-labelledby="result-title"><div className="celebration-mark" aria-hidden="true">✓</div><span className="eyebrow">오늘의 퀴즈 완료</span><h2 id="result-title">축하합니다!</h2><p className="result-summary">총 <strong>{result.totalCount}개</strong> 중 <strong>{result.correctCount}개</strong>를 맞혔습니다.</p><div className="rank-hero"><span>오늘의 전체 랭킹</span><strong>{result.rank}등</strong><small>총 {result.participants}명 참여</small></div><div className="score-grid compact"><div><span>걸린 시간</span><strong>{formatTime(result.elapsedSeconds)}</strong></div><div><span>사용한 힌트</span><strong>{result.hintCount}개</strong></div></div><p>{result.playerType === "GUEST" ? "이 브라우저의 기록은 쿠키로 기억됩니다. 로그인하면 계정 경쟁 랭킹에 참여할 수 있어요." : "로그인 계정으로 경쟁 랭킹에 기록되었습니다."}</p><button className="submit" onClick={() => setResult(null)}>완료</button></div></div>}
