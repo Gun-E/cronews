@@ -2,15 +2,19 @@
   "name": "cronews-v2",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-    ,"db:generate": "drizzle-kit generate"
-    ,"db:migrate": "drizzle-kit migrate"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
