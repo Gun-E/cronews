@@ -6,7 +6,8 @@ main { min-height: 100vh; padding: clamp(16px, 4vw, 48px); }
 .game-shell { width: min(1180px, 100%); margin: auto; }
 .game-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .game-header > div { display: flex; align-items: center; gap: 16px; }
-.game-header strong { color: var(--brand); font-size: 27px; letter-spacing: -.05em; }
+.cronews-logo { display: inline-flex; flex: 0 0 auto; }
+.cronews-logo img { display: block; width: 154px; height: auto; }
 .game-header span { color: var(--muted); }
 .game-header time { padding: 9px 14px; border-radius: 999px; background: white; color: var(--brand); font-variant-numeric: tabular-nums; font-weight: 800; }
 .header-actions a { color: var(--ink); text-decoration: none; font-weight: 700; }
@@ -60,11 +61,12 @@ main { min-height: 100vh; padding: clamp(16px, 4vw, 48px); }
 .score-grid.compact { grid-template-columns: 1fr 1fr; margin: 12px 0; text-align: left; }
 @media (max-width: 900px) { main { padding: 16px; } .game-layout { grid-template-columns: 1fr; gap: 18px; } .board { width: min(100%, 680px); margin: auto; padding: 8px; gap: 3px; border-radius: 18px; } .clue-panel { padding: 22px; } .clue-panel h2 { min-height: 0; margin-bottom: 18px; } }
 @media (max-width: 560px) { .score-grid { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { main { padding: 10px; } .game-header { align-items: flex-start; } .game-header > div:first-child { display: grid; gap: 1px; } .game-header strong { font-size: 23px; } .game-header span { display: block; font-size: 12px; } .header-actions { flex-direction: column-reverse; align-items: flex-end !important; gap: 5px !important; } .edition { margin: 14px 2px; } .board { padding: 6px; gap: 2px; border-radius: 13px; } .cell { border-radius: 3px; font-size: clamp(8px, 3.6vw, 15px); } .clue-panel { padding: 19px 16px; border-radius: 18px; } .clue-list { max-height: 190px; } .modal-backdrop { align-items: end; padding: 0; } .result-card { width: 100%; max-height: 92vh; overflow-y: auto; border-radius: 24px 24px 0 0; padding: 28px 20px calc(24px + env(safe-area-inset-bottom)); } .score-grid.compact { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { main { padding: 10px; } .game-header { align-items: flex-start; } .game-header > div:first-child { display: grid; gap: 5px; } .cronews-logo img { width: 128px; } .game-header span { display: block; font-size: 12px; } .header-actions { flex-direction: column-reverse; align-items: flex-end !important; gap: 5px !important; } .edition { margin: 14px 2px; } .board { padding: 6px; gap: 2px; border-radius: 13px; } .cell { border-radius: 3px; font-size: clamp(8px, 3.6vw, 15px); } .clue-panel { padding: 19px 16px; border-radius: 18px; } .clue-list { max-height: 190px; } .modal-backdrop { align-items: end; padding: 0; } .result-card { width: 100%; max-height: 92vh; overflow-y: auto; border-radius: 24px 24px 0 0; padding: 28px 20px calc(24px + env(safe-area-inset-bottom)); } .score-grid.compact { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 430px) { .header-actions a { font-size: 12px; } .game-header time { padding: 7px 9px; font-size: 12px; } .hint-area > button { align-items: flex-start; flex-direction: column; } }
 .login-page { display: grid; place-items: center; }
 .login-card { width: min(460px, 100%); padding: clamp(28px, 6vw, 48px); border-radius: 26px; background: white; box-shadow: 0 24px 70px rgba(53,57,120,.13); }
-.login-card .brand { display: block; margin-bottom: 36px; color: var(--brand); font-size: 28px; font-weight: 900; letter-spacing: -.05em; text-decoration: none; }
+.login-card .brand { display: block; width: fit-content; margin-bottom: 36px; text-decoration: none; }
+.login-card .brand img { display: block; width: 164px; height: auto; }
 .login-card h1 { margin: 8px 0; letter-spacing: -.04em; }
 .login-card p { color: var(--muted); line-height: 1.6; }
 .login-card label { display: grid; gap: 8px; margin: 28px 0 14px; font-size: 14px; font-weight: 800; }
@@ -80,7 +82,8 @@ main { min-height: 100vh; padding: clamp(16px, 4vw, 48px); }
 .login-submit { width: 100%; padding: 14px; border: 2px solid var(--brand); border-radius: 12px; background: white; color: var(--brand); font-weight: 800; cursor: pointer; }
 .ranking-shell { width: min(820px, 100%); margin: auto; }
 .ranking-shell > header { display: flex; gap: 14px; align-items: center; margin-bottom: 48px; }
-.ranking-shell > header a { color: var(--brand); font-size: 27px; font-weight: 900; letter-spacing: -.05em; text-decoration: none; }
+.ranking-shell > header a { display: inline-flex; text-decoration: none; }
+.ranking-shell > header img { display: block; width: 154px; height: auto; }
 .ranking-shell > header span { color: var(--muted); }
 .ranking-title { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
 .ranking-title h1 { margin: 7px 0 0; font-size: clamp(30px, 5vw, 46px); letter-spacing: -.05em; }

@@ -67,7 +67,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   };
 
   return <section className="game-shell">
-    <header className="game-header"><div><strong>CRONEWS</strong><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a><time>{formatTime(elapsed)}</time></div></header>
+    <header className="game-header"><div><a className="cronews-logo" href="/" aria-label="CRONEWS 홈"><img src="/images/logo.svg" alt="CRONEWS" /></a><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a><time>{formatTime(elapsed)}</time></div></header>
     <div className="edition"><span>{editionDate ?? "미리보기"}</span><strong>{filled}/{puzzle.words.length} 입력 완료</strong></div>
     <div className="game-layout">
       <div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>

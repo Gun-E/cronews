@@ -1,6 +1,6 @@
 import { PuzzleGame } from "@/features/puzzle/PuzzleGame";
 import { generatePuzzle } from "@/server/puzzle/generator";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/server/db/client";
 import { puzzles } from "@/server/db/schema";
 import type { PuzzleBoard } from "@/server/puzzle/types";
@@ -14,12 +14,31 @@ const sample = generatePuzzle([
   { id: "information", answer: "정보통신", question: "정보 처리와 원거리 전달 기술을 함께 이르는 말은?" },
 ], 11);
 
+async function getOrCreateDailyPuzzle() {
+  const db = getDb();
+  const editionDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+  const [existing] = await db.select().from(puzzles).where(eq(puzzles.editionDate, editionDate)).limit(1);
+  if (existing) return existing;
+  await db.insert(puzzles).values({
+    editionDate,
+    category: "ALL",
+    width: sample.width,
+    height: sample.height,
+    seed: `daily-starter:${editionDate}`,
+    grid: sample,
+    status: "PUBLISHED",
+    publishedAt: new Date(),
+  }).onConflictDoNothing();
+  const [created] = await db.select().from(puzzles).where(eq(puzzles.editionDate, editionDate)).limit(1);
+  return created;
+}
+
 export default async function Home({ searchParams }: { searchParams: Promise<{ submit?: string }> }) {
   const query = await searchParams;
   const { data: authData } = await (await createSupabaseServerClient()).auth.getUser();
   let daily: { id: string; editionDate: string; board: PuzzleBoard } | null = null;
   try {
-    const [row] = await getDb().select().from(puzzles).where(eq(puzzles.status, "PUBLISHED")).orderBy(desc(puzzles.editionDate)).limit(1);
+    const row = await getOrCreateDailyPuzzle();
     if (row) daily = { id: row.id, editionDate: row.editionDate, board: row.grid as PuzzleBoard };
   } catch (error) {
     console.error("daily puzzle unavailable", error);
