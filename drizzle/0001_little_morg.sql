@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "quiz_candidates_cluster_answer_prompt_idx" ON "quiz_candidates" USING btree ("cluster_id","normalized_answer","prompt_version");

@@ -60,7 +60,7 @@ export const quizCandidates = pgTable("quiz_candidates", {
   status: candidateStatus("status").notNull().default("GENERATED"),
   promptVersion: text("prompt_version").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [uniqueIndex("quiz_candidates_cluster_answer_prompt_idx").on(table.clusterId, table.normalizedAnswer, table.promptVersion)]);
 
 export const puzzles = pgTable("puzzles", {
   id: uuid("id").defaultRandom().primaryKey(),
