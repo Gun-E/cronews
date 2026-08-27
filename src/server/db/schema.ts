@@ -4,6 +4,7 @@ export const articleStatus = pgEnum("article_status", ["DISCOVERED", "NORMALIZED
 export const candidateStatus = pgEnum("candidate_status", ["GENERATED", "VALIDATED", "REVIEW_REQUIRED", "APPROVED", "REJECTED"]);
 export const puzzleStatus = pgEnum("puzzle_status", ["DRAFT", "VALIDATED", "SCHEDULED", "PUBLISHED", "ARCHIVED"]);
 export const workflowStatus = pgEnum("workflow_status", ["PENDING", "RUNNING", "PARTIAL", "SUCCEEDED", "FAILED"]);
+export const playerType = pgEnum("player_type", ["GUEST", "USER"]);
 
 export const newsSources = pgTable("news_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -74,6 +75,23 @@ export const puzzles = pgTable("puzzles", {
   publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("puzzles_edition_category_idx").on(table.editionDate, table.category)]);
+
+export const puzzleSubmissions = pgTable("puzzle_submissions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  puzzleId: uuid("puzzle_id").notNull().references(() => puzzles.id, { onDelete: "cascade" }),
+  playerType: playerType("player_type").notNull().default("GUEST"),
+  playerKey: text("player_key").notNull(),
+  userId: uuid("user_id"),
+  displayName: text("display_name").notNull(),
+  correctCount: integer("correct_count").notNull(),
+  totalCount: integer("total_count").notNull(),
+  elapsedSeconds: integer("elapsed_seconds").notNull(),
+  answers: jsonb("answers").notNull().default({}),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("puzzle_submissions_player_idx").on(table.puzzleId, table.playerKey),
+  index("puzzle_submissions_rank_idx").on(table.puzzleId, table.correctCount, table.elapsedSeconds),
+]);
 
 export const workflowRuns = pgTable("workflow_runs", {
   id: uuid("id").defaultRandom().primaryKey(),

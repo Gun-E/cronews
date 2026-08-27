@@ -1,11 +1,12 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/server/db/client";
-import { articleClusterMembers, articleClusters, articles, newsSources, quizCandidates, workflowRuns } from "@/server/db/schema";
+import { articleClusterMembers, articleClusters, articles, newsSources, puzzles, quizCandidates, workflowRuns } from "@/server/db/schema";
 import { clusterArticles, clusterKey } from "@/server/ingestion/cluster";
 import { fetchFeed } from "@/server/ingestion/feed";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
+import { generatePuzzle } from "@/server/puzzle/generator";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
 
@@ -75,6 +76,32 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       failed++;
       console.error("quiz generation failed", error);
     }
+  }
+  const dailyCandidates = await db.select().from(quizCandidates)
+    .where(gte(quizCandidates.createdAt, dayStart))
+    .orderBy(sql`${quizCandidates.confidence} desc`)
+    .limit(12);
+  if (dailyCandidates.length >= 2) {
+    const board = generatePuzzle(dailyCandidates.map((candidate) => ({
+      id: candidate.id,
+      answer: candidate.normalizedAnswer,
+      question: candidate.question,
+      hint: candidate.hint,
+      explanation: candidate.explanation,
+    })), 13);
+    await db.insert(puzzles).values({
+      editionDate,
+      category: "ALL",
+      width: board.width,
+      height: board.height,
+      seed: editionDate,
+      grid: board,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [puzzles.editionDate, puzzles.category],
+      set: { width: board.width, height: board.height, grid: board, status: "PUBLISHED", publishedAt: new Date() },
+    });
   }
   const details = { sources: sources.length, discovered, generated, failed };
   await db.update(workflowRuns).set({ status: failed ? "PARTIAL" : "SUCCEEDED", currentStep: "DONE", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
