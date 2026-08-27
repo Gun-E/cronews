@@ -22,6 +22,13 @@
       "when": 1787850844096,
       "tag": "0002_fantastic_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787851030964,
+      "tag": "0003_harsh_romulus",
+      "breakpoints": true
     }
   ]
 }

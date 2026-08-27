@@ -10,6 +10,7 @@ const submissionSchema = z.object({
   answers: z.record(z.string(), z.string().max(20)),
   displayName: z.string().trim().min(1).max(20),
   elapsedSeconds: z.number().int().min(1).max(86400),
+  usedHintIds: z.array(z.string().uuid()).max(30).default([]),
 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -32,6 +33,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const board = puzzle.grid as PuzzleBoard;
   const normalized = Object.fromEntries(Object.entries(parsed.data.answers).map(([key, value]) => [key, value.normalize("NFC").replace(/\s/g, "").toUpperCase()]));
   const correctCount = board.words.filter((word) => normalized[word.id] === word.answer).length;
+  const validWordIds = new Set(board.words.map((word) => word.id));
+  const usedHintIds = [...new Set(parsed.data.usedHintIds)].filter((wordId) => validWordIds.has(wordId));
   const values = {
     puzzleId: puzzle.id,
     playerType: userId ? "USER" as const : "GUEST" as const,
@@ -41,6 +44,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     correctCount,
     totalCount: board.words.length,
     elapsedSeconds: parsed.data.elapsedSeconds,
+    hintCount: usedHintIds.length,
+    usedHintIds,
     answers: normalized,
     completedAt: new Date(),
   };
@@ -52,9 +57,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     eq(puzzleSubmissions.puzzleId, puzzle.id),
     or(
       sql`${puzzleSubmissions.correctCount} > ${correctCount}`,
-      and(eq(puzzleSubmissions.correctCount, correctCount), sql`${puzzleSubmissions.elapsedSeconds} < ${parsed.data.elapsedSeconds}`),
+      and(eq(puzzleSubmissions.correctCount, correctCount), sql`${puzzleSubmissions.hintCount} < ${usedHintIds.length}`),
+      and(eq(puzzleSubmissions.correctCount, correctCount), eq(puzzleSubmissions.hintCount, usedHintIds.length), sql`${puzzleSubmissions.elapsedSeconds} < ${parsed.data.elapsedSeconds}`),
     ),
   ));
   const [total] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzleSubmissions).where(eq(puzzleSubmissions.puzzleId, puzzle.id));
-  return Response.json({ correctCount, totalCount: board.words.length, elapsedSeconds: parsed.data.elapsedSeconds, rank: ranking.rank, participants: total.count, playerType: values.playerType });
+  return Response.json({ correctCount, totalCount: board.words.length, elapsedSeconds: parsed.data.elapsedSeconds, hintCount: usedHintIds.length, rank: ranking.rank, participants: total.count, playerType: values.playerType });
 }

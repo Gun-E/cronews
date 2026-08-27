@@ -86,11 +86,13 @@ export const puzzleSubmissions = pgTable("puzzle_submissions", {
   correctCount: integer("correct_count").notNull(),
   totalCount: integer("total_count").notNull(),
   elapsedSeconds: integer("elapsed_seconds").notNull(),
+  hintCount: integer("hint_count").notNull().default(0),
+  usedHintIds: jsonb("used_hint_ids").notNull().default([]),
   answers: jsonb("answers").notNull().default({}),
   completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("puzzle_submissions_player_idx").on(table.puzzleId, table.playerKey),
-  index("puzzle_submissions_rank_idx").on(table.puzzleId, table.correctCount, table.elapsedSeconds),
+  index("puzzle_submissions_rank_idx").on(table.puzzleId, table.correctCount, table.hintCount, table.elapsedSeconds),
 ]);
 
 export const workflowRuns = pgTable("workflow_runs", {
