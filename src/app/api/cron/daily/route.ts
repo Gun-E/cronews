@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { runDailyIngestion } from "@/server/workflow/daily-ingestion";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
