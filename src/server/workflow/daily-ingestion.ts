@@ -6,7 +6,7 @@ import { fetchFeed } from "@/server/ingestion/feed";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
-import { generateBalancedPuzzle } from "@/server/puzzle/generator";
+import { generateBalancedPuzzle, isPuzzleConnected } from "@/server/puzzle/generator";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -55,6 +55,7 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): Puz
     }
     let board: PuzzleBoard;
     try { board = generateBalancedPuzzle(shuffled, 12); } catch { continue; }
+    if (!isPuzzleConnected(board)) continue;
     const signature = board.words.map((word) => word.id).sort().join(":");
     if (signatures.has(signature)) continue;
     signatures.add(signature);

@@ -27,6 +27,19 @@ function canPlace(board: PuzzleBoard, answer: string, row: number, col: number, 
   return crossings;
 }
 
+function canPlaceDense(board: PuzzleBoard, answer: string, row: number, col: number, direction: Direction): number {
+  const [dr, dc] = delta(direction);
+  const endRow = row + dr * (answer.length - 1), endCol = col + dc * (answer.length - 1);
+  if (row < 0 || col < 0 || endRow >= board.height || endCol >= board.width) return -1;
+  let crossings = 0;
+  for (let index = 0; index < answer.length; index++) {
+    const existing = board.cells[row + dr * index][col + dc * index];
+    if (existing && existing !== answer[index]) return -1;
+    if (existing === answer[index]) crossings++;
+  }
+  return crossings;
+}
+
 function place(board: PuzzleBoard, input: PuzzleInput, row: number, col: number, direction: Direction, crossings: number) {
   const answer = normalizeAnswer(input.answer), [dr, dc] = delta(direction);
   for (let i = 0; i < answer.length; i++) board.cells[row + dr * i][col + dc * i] = answer[i];
@@ -56,47 +69,44 @@ export function generatePuzzle(inputs: PuzzleInput[], size = 11): PuzzleBoard {
   return board;
 }
 
-function centeredIntersection(a: string, b: string, moduleSize: number) {
-  const center = Math.floor(moduleSize / 2);
-  for (let ai = 0; ai < a.length; ai++) for (let bi = 0; bi < b.length; bi++) {
-    if (a[ai] !== b[bi]) continue;
-    if (center - ai < 0 || center - bi < 0) continue;
-    if (center - ai + a.length > moduleSize || center - bi + b.length > moduleSize) continue;
-    return { ai, bi };
-  }
-  return null;
-}
-
 export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): PuzzleBoard {
   const normalized = inputs.map((input) => ({ ...input, answer: normalizeAnswer(input.answer) }))
     .filter((input) => /^[가-힣A-Z0-9]{2,8}$/.test(input.answer));
-  const used = new Set<string>();
-  const pairs: { across: PuzzleInput; down: PuzzleInput; ai: number; bi: number }[] = [];
-  const moduleSize = 11;
-  for (let i = 0; i < normalized.length && pairs.length < pairCount; i++) {
-    if (used.has(normalized[i].id)) continue;
-    for (let j = i + 1; j < normalized.length; j++) {
-      if (used.has(normalized[j].id)) continue;
-      const crossing = centeredIntersection(normalized[i].answer, normalized[j].answer, moduleSize);
-      if (!crossing) continue;
-      pairs.push({ across: normalized[i], down: normalized[j], ...crossing });
-      used.add(normalized[i].id); used.add(normalized[j].id);
-      break;
+  if (normalized.length < pairCount * 2) throw new Error("Not enough words for a balanced puzzle");
+  const size = 41;
+  const board = emptyBoard(size);
+  const unused = new Map(normalized.map((word) => [word.id, word]));
+  const first = normalized[0];
+  place(board, first, Math.floor(size / 2), Math.floor((size - first.answer.length) / 2), "ACROSS", 0);
+  unused.delete(first.id);
+  let across = 1, down = 0;
+  while (across < pairCount || down < pairCount) {
+    const target: Direction = down < pairCount && (down <= across || across >= pairCount) ? "DOWN" : "ACROSS";
+    let best: { input: PuzzleInput; row: number; col: number; crossings: number; score: number } | undefined;
+    for (const input of unused.values()) {
+      for (let candidateIndex = 0; candidateIndex < input.answer.length; candidateIndex++) {
+        for (const existing of board.words) {
+          if (existing.direction === target) continue;
+          for (let existingIndex = 0; existingIndex < existing.answer.length; existingIndex++) {
+            if (input.answer[candidateIndex] !== existing.answer[existingIndex]) continue;
+            const row = target === "DOWN" ? existing.row - candidateIndex : existing.row + existingIndex;
+            const col = target === "DOWN" ? existing.col + existingIndex : existing.col - candidateIndex;
+            const crossings = canPlaceDense(board, input.answer, row, col, target);
+            if (crossings < 1) continue;
+            const endRow = row + (target === "DOWN" ? input.answer.length - 1 : 0);
+            const endCol = col + (target === "ACROSS" ? input.answer.length - 1 : 0);
+            const centerDistance = Math.abs((row + endRow) / 2 - size / 2) + Math.abs((col + endCol) / 2 - size / 2);
+            const score = crossings * 100 - centerDistance;
+            if (!best || score > best.score) best = { input, row, col, crossings, score };
+          }
+        }
+      }
     }
+    if (!best) throw new Error(`Connected puzzle stopped at ${across} across and ${down} down`);
+    place(board, best.input, best.row, best.col, target, best.crossings);
+    unused.delete(best.input.id);
+    if (target === "ACROSS") across++; else down++;
   }
-  if (pairs.length < pairCount) throw new Error(`Balanced puzzle requires ${pairCount * 2} intersecting words; found ${pairs.length * 2}`);
-  const modulesPerRow = 2;
-  const rows = Math.ceil(pairCount / modulesPerRow);
-  const board = emptyBoard(moduleSize * Math.max(1, Math.min(modulesPerRow, pairCount)));
-  board.height = moduleSize * rows;
-  board.cells = Array.from({ length: board.height }, () => Array<string | null>(board.width).fill(null));
-  const center = Math.floor(moduleSize / 2);
-  pairs.forEach((pair, index) => {
-    const baseRow = Math.floor(index / modulesPerRow) * moduleSize;
-    const baseCol = (index % modulesPerRow) * moduleSize;
-    place(board, pair.across, baseRow + center, baseCol + center - pair.ai, "ACROSS", 0);
-    place(board, pair.down, baseRow + center - pair.bi, baseCol + center, "DOWN", 1);
-  });
   return board;
 }
 
@@ -105,4 +115,19 @@ export function validatePuzzle(board: PuzzleBoard): boolean {
     const [dr, dc] = delta(word.direction);
     return [...word.answer].every((char, index) => board.cells[word.row + dr * index]?.[word.col + dc * index] === char);
   });
+}
+
+export function isPuzzleConnected(board: PuzzleBoard): boolean {
+  if (!board.words.length) return false;
+  const cellsByWord = new Map(board.words.map((word) => [word.id, new Set([...word.answer].map((_, index) => `${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`))]));
+  const visited = new Set<string>([board.words[0].id]);
+  const queue = [board.words[0].id];
+  while (queue.length) {
+    const current = cellsByWord.get(queue.shift()!)!;
+    for (const [wordId, cells] of cellsByWord) {
+      if (visited.has(wordId)) continue;
+      if ([...cells].some((cell) => current.has(cell))) { visited.add(wordId); queue.push(wordId); }
+    }
+  }
+  return visited.size === board.words.length;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateBalancedPuzzle, generatePuzzle, validatePuzzle } from "./generator";
+import { generateBalancedPuzzle, generatePuzzle, isPuzzleConnected, validatePuzzle } from "./generator";
 
 describe("crossword generator", () => {
   it("places intersecting Korean answers without corrupting cells", () => {
@@ -22,5 +22,6 @@ describe("crossword generator", () => {
     expect(puzzle.words.filter((word) => word.direction === "ACROSS")).toHaveLength(12);
     expect(puzzle.words.filter((word) => word.direction === "DOWN")).toHaveLength(12);
     expect(validatePuzzle(puzzle)).toBe(true);
+    expect(isPuzzleConnected(puzzle)).toBe(true);
   });
 });
