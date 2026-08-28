@@ -62,6 +62,9 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
   if (normalized.length < pairCount * 2) throw new Error("Not enough words for a balanced puzzle");
   const size = 61;
   const board = emptyBoard(size);
+  const hash = (value: string) => [...value].reduce((result, character) => Math.imul(result ^ character.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  const layoutSeed = hash(normalized.slice(0, 8).map((word) => word.id).join(":"));
+  const layoutStyle = layoutSeed % 4;
   const degreeById = new Map(normalized.map((word) => [word.id, normalized.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0)]));
   const first = normalized[0];
   place(board, first, Math.floor(size / 2), Math.floor((size - first.answer.length) / 2), "ACROSS", 0);
@@ -72,13 +75,18 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
   const search = (current: PuzzleBoard, unused: PuzzleInput[]): PuzzleBoard | null => {
     if (current.words.length === targetWords) return current;
     if (++visitedNodes > maxNodes) return null;
-    const anchor = current.words.at(-1)!;
-    const target: Direction = anchor.direction === "ACROSS" ? "DOWN" : "ACROSS";
+    const acrossCount = current.words.filter((word) => word.direction === "ACROSS").length;
+    const downCount = current.words.length - acrossCount;
+    const target: Direction = acrossCount >= pairCount ? "DOWN"
+      : downCount >= pairCount ? "ACROSS"
+        : acrossCount === downCount ? ((layoutSeed + current.words.length) % 2 ? "ACROSS" : "DOWN")
+          : acrossCount > downCount ? "DOWN" : "ACROSS";
+    const anchors = current.words.filter((word) => word.direction !== target);
     const placements: { input: PuzzleInput; row: number; col: number; crossings: number; score: number }[] = [];
     const placementKeys = new Set<string>();
     for (const input of unused) {
       const futureMatches = degreeById.get(input.id) ?? 0;
-      for (let candidateIndex = 0; candidateIndex < input.answer.length; candidateIndex++) {
+      for (const anchor of anchors) for (let candidateIndex = 0; candidateIndex < input.answer.length; candidateIndex++) {
         for (let existingIndex = 0; existingIndex < anchor.answer.length; existingIndex++) {
             if (input.answer[candidateIndex] !== anchor.answer[existingIndex]) continue;
             const row = target === "DOWN" ? anchor.row - candidateIndex : anchor.row + existingIndex;
@@ -91,13 +99,19 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
             const endRow = row + (target === "DOWN" ? input.answer.length - 1 : 0);
             const endCol = col + (target === "ACROSS" ? input.answer.length - 1 : 0);
             const centerDistance = Math.abs((row + endRow) / 2 - size / 2) + Math.abs((col + endCol) / 2 - size / 2);
-            const score = crossings * 1000 + futureMatches * 4 - centerDistance;
+            const jitter = hash(`${layoutSeed}:${current.words.length}:${input.id}:${row}:${col}`) % 240;
+            const shapeBias = layoutStyle === 0 ? -centerDistance * 14
+              : layoutStyle === 1 ? centerDistance * 5
+                : layoutStyle === 2 ? (target === "ACROSS" ? -Math.abs(row - size / 2) * 8 : -Math.abs(col - size / 2) * 8)
+                  : -centerDistance * 3;
+            const crossingWeight = layoutStyle === 3 ? 1_300 : 900;
+            const score = crossings * crossingWeight + futureMatches * 4 + shapeBias + jitter;
             placements.push({ input, row, col, crossings, score });
         }
       }
     }
     placements.sort((a, b) => b.score - a.score);
-    for (const candidate of placements.slice(0, 100)) {
+    for (const candidate of placements.slice(0, 140)) {
       const next = clone(current);
       place(next, candidate.input, candidate.row, candidate.col, target, candidate.crossings);
       if (!validateCrosswordRules(next)) continue;
