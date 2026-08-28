@@ -7,6 +7,7 @@ import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
 import { generatePuzzle } from "@/server/puzzle/generator";
+import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
 
@@ -30,7 +31,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
       hints: [
         "오늘 수집된 주요 뉴스 제목에 등장한 핵심어입니다.",
         `출처는 ${publisher} 기사입니다.`,
-        `정답은 ${[...answer].length}글자입니다.`,
+        "기사 제목에서 사건의 핵심 대상이 되는 표현입니다.",
         `첫 글자는 ‘${[...answer][0]}’입니다.`,
         `정답은 ‘${answer}’입니다.`,
       ],
@@ -38,6 +39,29 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
       evidence: [{ articleId: article.externalId ?? article.url, fact: article.title }],
     }];
   }).slice(0, 5);
+}
+
+export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
+  const candidates = inputs.slice(0, 40);
+  const boards: PuzzleBoard[] = [];
+  const signatures = new Set<string>();
+  for (let attempt = 0; attempt < 5000 && boards.length < limit; attempt++) {
+    const shuffled = [...candidates];
+    let seed = ((attempt + 1) * 2654435761) >>> 0;
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const swapIndex = seed % (index + 1);
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    const selected = shuffled.slice(0, Math.min(6 + (attempt % 5), candidates.length));
+    const board = generatePuzzle(selected, 15);
+    if (board.words.length < 2) continue;
+    const signature = board.words.map((word) => word.id).sort().join(":");
+    if (signatures.has(signature)) continue;
+    signatures.add(signature);
+    boards.push(board);
+  }
+  return boards;
 }
 
 export async function runDailyIngestion(date = new Date()): Promise<IngestionSummary> {
@@ -119,10 +143,28 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       } catch (fallbackError) { console.error("fallback quiz generation failed", fallbackError); }
     }
   }
+  const existingDailyCandidates = await db.select().from(quizCandidates)
+    .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
+    .orderBy(sql`${quizCandidates.confidence} desc`)
+    .limit(40);
+  if (existingDailyCandidates.length < 40) {
+    let fallbackPoolSize = existingDailyCandidates.length;
+    for (const article of pending) {
+      const [candidate] = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
+      if (!candidate) continue;
+      const key = clusterKey([{ externalId: article.id, title: article.title, url: article.canonicalUrl, summary: article.summary ?? undefined, publishedAt: article.publishedAt ?? undefined }]);
+      const [cluster] = await db.insert(articleClusters).values({ representativeTitle: article.title, clusterKey: key })
+        .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: article.title } }).returning();
+      await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: article.id }).onConflictDoNothing();
+      await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
+      generated++;
+      if (++fallbackPoolSize >= 40) break;
+    }
+  }
   const dailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
-    .limit(12);
+    .limit(40);
   if (dailyCandidates.length >= 2) {
     const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
       .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));
@@ -136,10 +178,7 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       }
       sourcesByCluster.set(item.clusterId, current.slice(0, 3));
     }
-    for (let sequenceNumber = 1; sequenceNumber <= 30; sequenceNumber++) {
-      const offset = (sequenceNumber - 1) % dailyCandidates.length;
-      const rotated = [...dailyCandidates.slice(offset), ...dailyCandidates.slice(0, offset)];
-      const board = generatePuzzle(rotated.map((candidate) => ({
+    const puzzleInputs = dailyCandidates.map((candidate) => ({
         id: candidate.id,
         answer: candidate.normalizedAnswer,
         question: candidate.question,
@@ -147,8 +186,11 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
         hints: Array.isArray(candidate.hints) ? candidate.hints as string[] : [candidate.hint],
         explanation: candidate.explanation,
         sources: sourcesByCluster.get(candidate.clusterId) ?? [],
-      })), 15);
-      if (board.words.length < 2) continue;
+      }));
+    const dailyBoards = buildDistinctDailyBoards(puzzleInputs, 30);
+    if (dailyBoards.length < 30) throw new Error(`Only ${dailyBoards.length} distinct daily puzzles could be generated`);
+    for (const [index, board] of dailyBoards.entries()) {
+      const sequenceNumber = index + 1;
       await db.insert(puzzles).values({
         editionDate,
         category: `DAILY-${String(sequenceNumber).padStart(2, "0")}`,

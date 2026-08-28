@@ -23,7 +23,8 @@ function LetterInput({ id, index, value, disabled, onCommit, onPasteText, onEmpt
 }
 
 export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeSubmission = false, sequenceNumber = 1, dailyLimit = 1, completedNumbers = [] }: { puzzle: PuzzleBoard; puzzleId?: string; editionDate?: string; accountName?: string; resumeSubmission?: boolean; sequenceNumber?: number; dailyLimit?: number; completedNumbers?: number[] }) {
-  const storageKey = `cronews:v2:${puzzleId ?? "unavailable"}`;
+  const puzzleSignature = puzzle.words.map((word) => word.id).sort().join("-");
+  const storageKey = `cronews:v3:${puzzleId ?? "unavailable"}:${puzzleSignature}`;
   const [entries, setEntries] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState(puzzle.words[0]?.id ?? "");
   const [started, setStarted] = useState(false);
@@ -73,7 +74,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
     else characters.slice(0, active.answer.length - index).forEach((character, offset) => { next[cellKey(active, index + offset)] = character; });
     setEntries(next); persist(next);
     const nextIndex = Math.min(index + Math.max(characters.length, 1), active.answer.length - 1);
-    if (moveFocus && characters.length && index < active.answer.length - 1) window.setTimeout(() => document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus(), 0);
+    if (moveFocus && characters.length && index < active.answer.length - 1) document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus();
   };
   const activeHints = buildProgressiveHints(active.answer, active.hints, active.hint);
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
