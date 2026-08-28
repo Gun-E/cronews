@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PuzzleBoard } from "@/server/puzzle/types";
+import { buildProgressiveHints, normalizeCellValue } from "./client-logic";
 
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
@@ -15,14 +16,14 @@ function LetterInput({ id, index, value, disabled, onCommit, onPasteText, onEmpt
   useEffect(() => { if (!composing.current) setDraft(value); }, [value]);
   return <input id={id} aria-label={`${index + 1}번째 글자`} value={draft} disabled={disabled} autoComplete="off" inputMode="text"
     onCompositionStart={() => { composing.current = true; }}
-    onCompositionEnd={(event) => { composing.current = false; const characters = [...event.currentTarget.value.normalize("NFC")]; const next = characters.at(-1) ?? ""; ignoreNextChange.current = true; setDraft(next); onCommit(next, true); window.setTimeout(() => { ignoreNextChange.current = false; }, 0); }}
-    onChange={(event) => { if (ignoreNextChange.current) return; const raw = event.target.value; setDraft(raw); if (!composing.current) { const next = [...raw.normalize("NFC")].at(-1) ?? ""; setDraft(next); onCommit(next, true); } }}
+    onCompositionEnd={(event) => { composing.current = false; const next = normalizeCellValue(event.currentTarget.value); ignoreNextChange.current = true; setDraft(next); onCommit(next, true); window.setTimeout(() => { ignoreNextChange.current = false; }, 0); }}
+    onChange={(event) => { if (ignoreNextChange.current) return; const raw = event.target.value; setDraft(raw); if (!composing.current) { const next = normalizeCellValue(raw); setDraft(next); onCommit(next, true); } }}
     onPaste={(event) => { const pasted = event.clipboardData.getData("text"); if ([...pasted].length > 1) { event.preventDefault(); onPasteText(pasted); } }}
     onKeyDown={(event) => { if (event.key === "Backspace" && !draft) onEmptyBackspace(); }} />;
 }
 
 export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeSubmission = false, sequenceNumber = 1, dailyLimit = 1, completedNumbers = [] }: { puzzle: PuzzleBoard; puzzleId?: string; editionDate?: string; accountName?: string; resumeSubmission?: boolean; sequenceNumber?: number; dailyLimit?: number; completedNumbers?: number[] }) {
-  const storageKey = `cronews:${puzzleId ?? "unavailable"}`;
+  const storageKey = `cronews:v2:${puzzleId ?? "unavailable"}`;
   const [entries, setEntries] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState(puzzle.words[0]?.id ?? "");
   const [started, setStarted] = useState(false);
@@ -74,8 +75,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
     const nextIndex = Math.min(index + Math.max(characters.length, 1), active.answer.length - 1);
     if (moveFocus && characters.length && index < active.answer.length - 1) window.setTimeout(() => document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus(), 0);
   };
-  const generatedHints = (active.hints?.length ? active.hints : active.hint ? [active.hint] : []).slice(0, 4);
-  const activeHints = [...generatedHints, `정답은 ‘${active.answer}’입니다.`];
+  const activeHints = buildProgressiveHints(active.answer, active.hints, active.hint);
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
   const useHint = () => {
     const level = revealedHints.length + 1;
@@ -97,7 +97,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   const sources = Array.from(new Map(puzzle.words.flatMap((word) => word.sources ?? []).map((source) => [source.url, source])).values());
 
   return <section className="game-shell">
-    <header className="game-header"><div><a className="cronews-logo" href="/" aria-label="CRONEWS 홈"><img src="/images/logo.svg" alt="CRONEWS" /></a><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a></div></header>
+    <header className="game-header"><div><a className="cronews-logo" href="/" aria-label="CRONEWS 홈"><img src="/images/logo.svg" alt="CRONEWS" /></a><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a>{accountName && <form action="/auth/logout" method="post"><button type="submit">로그아웃</button></form>}</div></header>
     {!started ? <section className="start-gate"><span className="eyebrow">{editionDate} · 퍼즐 {sequenceNumber}</span><div className="start-lock" aria-hidden="true">?</div><h1>문제는 시작 후 공개됩니다</h1><p>제한 시간은 15분입니다. 시작 버튼을 누르는 순간부터 타이머가 흐르며, 문항별로 어려운 순서의 힌트를 최대 5단계까지 사용할 수 있습니다.</p><button type="button" className="submit" onClick={startGame}>게임 시작</button></section> : <>
       <div className={`timer-panel ${timerState}`}><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{remaining ? "남은 시간" : "시간 종료"}</span></div><time dateTime={`PT${remaining}S`}>{formatClock(remaining)}</time></div><div className="timer-track" role="progressbar" aria-label="남은 시간" aria-valuemin={0} aria-valuemax={QUIZ_SECONDS} aria-valuenow={remaining}><span style={{ width: `${(remaining / QUIZ_SECONDS) * 100}%` }} /></div><div className="timer-meta"><span>{editionDate} · 퍼즐 {sequenceNumber}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
       {accountName && <nav className="puzzle-picker" aria-label="오늘의 퍼즐 선택"><div><strong>오늘의 도전</strong><span>{completedNumbers.length}/{dailyLimit}개 완료</span></div><div className="puzzle-numbers">{Array.from({ length: dailyLimit }, (_, index) => index + 1).map((number) => <a key={number} href={`/?puzzle=${number}`} className={`${number === sequenceNumber ? "current" : ""} ${completedNumbers.includes(number) ? "completed" : ""}`}>{completedNumbers.includes(number) ? "✓" : number}</a>)}</div></nav>}

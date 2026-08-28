@@ -15,6 +15,9 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .header-actions a { color: var(--ink); text-decoration: none; font-weight: 700; }
 .header-actions a { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.78); transition: border-color .2s, color .2s, transform .2s; }
 .header-actions a:hover { border-color: var(--brand); color: var(--brand); transform: translateY(-1px); }
+.header-actions form { margin: 0; }
+.header-actions button, .ranking-shell > header button { padding: 8px 10px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.header-actions button:hover, .ranking-shell > header button:hover { color: var(--brand); }
 .timer-panel { margin-bottom: 24px; padding: 18px 20px 16px; border: 1px solid rgba(81,93,241,.1); border-radius: 18px; background: rgba(255,255,255,.86); box-shadow: 0 12px 36px rgba(39,45,106,.07); backdrop-filter: blur(12px); }
 .timer-copy, .timer-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .timer-copy > div { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 700; }
@@ -146,6 +149,7 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .ranking-shell > header a { display: inline-flex; text-decoration: none; }
 .ranking-shell > header img { display: block; width: 154px; height: auto; }
 .ranking-shell > header span { color: var(--muted); }
+.ranking-shell > header form { margin-left: auto; }
 .ranking-title { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
 .ranking-title h1 { margin: 7px 0 0; font-size: clamp(30px, 5vw, 46px); letter-spacing: -.05em; }
 .ranking-title p { margin: 8px 0 0; color: var(--muted); }
