@@ -1,6 +1,6 @@
 import { configuredProviders } from "./factory";
 import { generateWithFallback } from "./fallback";
-import { buildNewsQuizPrompt, NEWS_QUIZ_SYSTEM } from "./news-prompt";
+import { buildNewsQuizPrompt, NEWS_QUIZ_PROMPT_VERSION, NEWS_QUIZ_SYSTEM } from "./news-prompt";
 import { quizGenerationSchema } from "./news-schema";
 import type { FeedArticle } from "@/server/ingestion/types";
 
@@ -18,6 +18,6 @@ export async function generateNewsQuiz(clusterId: string, articles: FeedArticle[
     system: NEWS_QUIZ_SYSTEM,
     prompt: buildNewsQuizPrompt(safeArticles),
     schema: quizGenerationSchema,
-    idempotencyKey: `quiz:${clusterId}`,
+    idempotencyKey: `quiz:${clusterId}:${NEWS_QUIZ_PROMPT_VERSION}`,
   }, providers);
 }

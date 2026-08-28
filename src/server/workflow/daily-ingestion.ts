@@ -59,7 +59,8 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
           answer: candidate.answer,
           normalizedAnswer: candidate.normalizedAnswer,
           question: candidate.question,
-          hint: candidate.hint,
+          hint: candidate.hints[0],
+          hints: candidate.hints,
           explanation: candidate.explanation,
           difficulty: candidate.difficulty,
           confidence: Math.round(candidate.confidence * 100),
@@ -78,31 +79,50 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     }
   }
   const dailyCandidates = await db.select().from(quizCandidates)
-    .where(gte(quizCandidates.createdAt, dayStart))
+    .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
     .limit(12);
   if (dailyCandidates.length >= 2) {
-    const board = generatePuzzle(dailyCandidates.map((candidate) => ({
-      id: candidate.id,
-      answer: candidate.normalizedAnswer,
-      question: candidate.question,
-      hint: candidate.hint,
-      explanation: candidate.explanation,
-    })), 13);
-    await db.insert(puzzles).values({
-      editionDate,
-      category: "ALL",
-      sequenceNumber: 1,
-      width: board.width,
-      height: board.height,
-      seed: editionDate,
-      grid: board,
-      status: "PUBLISHED",
-      publishedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: [puzzles.editionDate, puzzles.sequenceNumber],
-      set: { width: board.width, height: board.height, grid: board, status: "PUBLISHED", publishedAt: new Date() },
-    });
+    const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
+      .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));
+    const sourcesByCluster = new Map<string, { title: string; url: string; publisher?: string }[]>();
+    for (const item of memberships) {
+      const current = sourcesByCluster.get(item.clusterId) ?? [];
+      if (!current.some((source) => source.url === item.url)) {
+        let publisher: string | undefined;
+        try { publisher = new URL(item.url).hostname.replace(/^www\./, ""); } catch { publisher = undefined; }
+        current.push({ title: item.title, url: item.url, publisher });
+      }
+      sourcesByCluster.set(item.clusterId, current.slice(0, 3));
+    }
+    for (let sequenceNumber = 1; sequenceNumber <= 30; sequenceNumber++) {
+      const offset = (sequenceNumber - 1) % dailyCandidates.length;
+      const rotated = [...dailyCandidates.slice(offset), ...dailyCandidates.slice(0, offset)];
+      const board = generatePuzzle(rotated.map((candidate) => ({
+        id: candidate.id,
+        answer: candidate.normalizedAnswer,
+        question: candidate.question,
+        hint: candidate.hint,
+        hints: Array.isArray(candidate.hints) ? candidate.hints as string[] : [candidate.hint],
+        explanation: candidate.explanation,
+        sources: sourcesByCluster.get(candidate.clusterId) ?? [],
+      })), 15);
+      if (board.words.length < 2) continue;
+      await db.insert(puzzles).values({
+        editionDate,
+        category: `DAILY-${String(sequenceNumber).padStart(2, "0")}`,
+        sequenceNumber,
+        width: board.width,
+        height: board.height,
+        seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:${sequenceNumber}`,
+        grid: board,
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [puzzles.editionDate, puzzles.sequenceNumber],
+        set: { width: board.width, height: board.height, grid: board, seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:${sequenceNumber}`, status: "PUBLISHED", publishedAt: new Date() },
+      });
+    }
   }
   const details = { sources: sources.length, discovered, generated, failed };
   await db.update(workflowRuns).set({ status: failed ? "PARTIAL" : "SUCCEEDED", currentStep: "DONE", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));

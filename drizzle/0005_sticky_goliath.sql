@@ -1,0 +1,1 @@
+ALTER TABLE "quiz_candidates" ADD COLUMN "hints" jsonb DEFAULT '[]'::jsonb NOT NULL;

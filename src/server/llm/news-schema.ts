@@ -10,7 +10,7 @@ export const quizGenerationSchema = z.object({
     answer: z.string().min(2).max(8).regex(/^[가-힣A-Za-z0-9]+$/),
     normalizedAnswer: z.string().min(2).max(8),
     question: z.string().min(15),
-    hint: z.string().min(5),
+    hints: z.array(z.string().min(5)).length(5),
     explanation: z.string().min(20),
     difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
     confidence: z.number().min(0).max(1),

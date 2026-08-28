@@ -54,6 +54,7 @@ export const quizCandidates = pgTable("quiz_candidates", {
   normalizedAnswer: text("normalized_answer").notNull(),
   question: text("question").notNull(),
   hint: text("hint").notNull(),
+  hints: jsonb("hints").notNull().default([]),
   explanation: text("explanation").notNull(),
   difficulty: text("difficulty").notNull(),
   confidence: integer("confidence").notNull(),

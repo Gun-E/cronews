@@ -10,7 +10,7 @@ const submissionSchema = z.object({
   answers: z.record(z.string(), z.string().max(20)),
   displayName: z.string().trim().min(1).max(20),
   elapsedSeconds: z.number().int().min(1).max(86400),
-  usedHintIds: z.array(z.string().uuid()).max(30).default([]),
+  usedHintIds: z.array(z.string().max(100)).max(150).default([]),
 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -34,8 +34,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const board = puzzle.grid as PuzzleBoard;
   const normalized = Object.fromEntries(Object.entries(parsed.data.answers).map(([key, value]) => [key, value.normalize("NFC").replace(/\s/g, "").toUpperCase()]));
   const correctCount = board.words.filter((word) => normalized[word.id] === word.answer).length;
-  const validWordIds = new Set(board.words.map((word) => word.id));
-  const usedHintIds = [...new Set(parsed.data.usedHintIds)].filter((wordId) => validWordIds.has(wordId));
+  const validHintIds = new Set(board.words.flatMap((word) => Array.from({ length: 5 }, (_, index) => `${word.id}:${index + 1}`)));
+  const usedHintIds = [...new Set(parsed.data.usedHintIds)].filter((hintId) => validHintIds.has(hintId));
   const values = {
     puzzleId: puzzle.id,
     playerType: userId ? "USER" as const : "GUEST" as const,
