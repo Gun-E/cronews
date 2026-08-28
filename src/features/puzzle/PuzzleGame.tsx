@@ -11,11 +11,12 @@ const QUIZ_SECONDS = 15 * 60;
 function LetterInput({ id, index, value, disabled, onCommit, onPasteText, onEmptyBackspace }: { id: string; index: number; value: string; disabled: boolean; onCommit: (value: string, moveFocus?: boolean) => void; onPasteText: (value: string) => void; onEmptyBackspace: () => void }) {
   const [draft, setDraft] = useState(value);
   const composing = useRef(false);
+  const ignoreNextChange = useRef(false);
   useEffect(() => { if (!composing.current) setDraft(value); }, [value]);
-  return <input id={id} aria-label={`${index + 1}번째 글자`} value={draft} maxLength={1} disabled={disabled} autoComplete="off" inputMode="text"
+  return <input id={id} aria-label={`${index + 1}번째 글자`} value={draft} disabled={disabled} autoComplete="off" inputMode="text"
     onCompositionStart={() => { composing.current = true; }}
-    onCompositionEnd={(event) => { composing.current = false; const next = event.currentTarget.value.normalize("NFC"); setDraft(next); onCommit(next, true); }}
-    onChange={(event) => { const next = event.target.value; setDraft(next); if (!composing.current) onCommit(next, true); }}
+    onCompositionEnd={(event) => { composing.current = false; const characters = [...event.currentTarget.value.normalize("NFC")]; const next = characters.at(-1) ?? ""; ignoreNextChange.current = true; setDraft(next); onCommit(next, true); window.setTimeout(() => { ignoreNextChange.current = false; }, 0); }}
+    onChange={(event) => { if (ignoreNextChange.current) return; const raw = event.target.value; setDraft(raw); if (!composing.current) { const next = [...raw.normalize("NFC")].at(-1) ?? ""; setDraft(next); onCommit(next, true); } }}
     onPaste={(event) => { const pasted = event.clipboardData.getData("text"); if ([...pasted].length > 1) { event.preventDefault(); onPasteText(pasted); } }}
     onKeyDown={(event) => { if (event.key === "Backspace" && !draft) onEmptyBackspace(); }} />;
 }
@@ -73,7 +74,8 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
     const nextIndex = Math.min(index + Math.max(characters.length, 1), active.answer.length - 1);
     if (moveFocus && characters.length && index < active.answer.length - 1) window.setTimeout(() => document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus(), 0);
   };
-  const activeHints = (active.hints?.length ? active.hints : active.hint ? [active.hint] : []).slice(0, 5);
+  const generatedHints = (active.hints?.length ? active.hints : active.hint ? [active.hint] : []).slice(0, 4);
+  const activeHints = [...generatedHints, `정답은 ‘${active.answer}’입니다.`];
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
   const useHint = () => {
     const level = revealedHints.length + 1;

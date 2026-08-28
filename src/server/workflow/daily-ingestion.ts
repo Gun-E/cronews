@@ -32,7 +32,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
         `출처는 ${publisher} 기사입니다.`,
         `정답은 ${[...answer].length}글자입니다.`,
         `첫 글자는 ‘${[...answer][0]}’입니다.`,
-        `첫 글자는 ‘${[...answer][0]}’, 마지막 글자는 ‘${[...answer].at(-1)}’입니다.`,
+        `정답은 ‘${answer}’입니다.`,
       ],
       explanation: `원문 기사 제목은 “${article.title}”입니다. 기사 원문에서 맥락을 확인할 수 있습니다.`,
       evidence: [{ articleId: article.externalId ?? article.url, fact: article.title }],
