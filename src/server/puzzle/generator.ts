@@ -56,6 +56,50 @@ export function generatePuzzle(inputs: PuzzleInput[], size = 11): PuzzleBoard {
   return board;
 }
 
+function centeredIntersection(a: string, b: string, moduleSize: number) {
+  const center = Math.floor(moduleSize / 2);
+  for (let ai = 0; ai < a.length; ai++) for (let bi = 0; bi < b.length; bi++) {
+    if (a[ai] !== b[bi]) continue;
+    if (center - ai < 0 || center - bi < 0) continue;
+    if (center - ai + a.length > moduleSize || center - bi + b.length > moduleSize) continue;
+    return { ai, bi };
+  }
+  return null;
+}
+
+export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): PuzzleBoard {
+  const normalized = inputs.map((input) => ({ ...input, answer: normalizeAnswer(input.answer) }))
+    .filter((input) => /^[가-힣A-Z0-9]{2,8}$/.test(input.answer));
+  const used = new Set<string>();
+  const pairs: { across: PuzzleInput; down: PuzzleInput; ai: number; bi: number }[] = [];
+  const moduleSize = 11;
+  for (let i = 0; i < normalized.length && pairs.length < pairCount; i++) {
+    if (used.has(normalized[i].id)) continue;
+    for (let j = i + 1; j < normalized.length; j++) {
+      if (used.has(normalized[j].id)) continue;
+      const crossing = centeredIntersection(normalized[i].answer, normalized[j].answer, moduleSize);
+      if (!crossing) continue;
+      pairs.push({ across: normalized[i], down: normalized[j], ...crossing });
+      used.add(normalized[i].id); used.add(normalized[j].id);
+      break;
+    }
+  }
+  if (pairs.length < pairCount) throw new Error(`Balanced puzzle requires ${pairCount * 2} intersecting words; found ${pairs.length * 2}`);
+  const modulesPerRow = 2;
+  const rows = Math.ceil(pairCount / modulesPerRow);
+  const board = emptyBoard(moduleSize * Math.max(1, Math.min(modulesPerRow, pairCount)));
+  board.height = moduleSize * rows;
+  board.cells = Array.from({ length: board.height }, () => Array<string | null>(board.width).fill(null));
+  const center = Math.floor(moduleSize / 2);
+  pairs.forEach((pair, index) => {
+    const baseRow = Math.floor(index / modulesPerRow) * moduleSize;
+    const baseCol = (index % modulesPerRow) * moduleSize;
+    place(board, pair.across, baseRow + center, baseCol + center - pair.ai, "ACROSS", 0);
+    place(board, pair.down, baseRow + center - pair.bi, baseCol + center, "DOWN", 1);
+  });
+  return board;
+}
+
 export function validatePuzzle(board: PuzzleBoard): boolean {
   return board.words.every((word) => {
     const [dr, dc] = delta(word.direction);

@@ -6,7 +6,7 @@ import { fetchFeed } from "@/server/ingestion/feed";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
-import { generatePuzzle } from "@/server/puzzle/generator";
+import { generateBalancedPuzzle } from "@/server/puzzle/generator";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -42,7 +42,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
 }
 
 export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
-  const candidates = inputs.slice(0, 40);
+  const candidates = inputs.slice(0, 120);
   const boards: PuzzleBoard[] = [];
   const signatures = new Set<string>();
   for (let attempt = 0; attempt < 5000 && boards.length < limit; attempt++) {
@@ -53,9 +53,8 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): Puz
       const swapIndex = seed % (index + 1);
       [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
     }
-    const selected = shuffled.slice(0, Math.min(6 + (attempt % 5), candidates.length));
-    const board = generatePuzzle(selected, 15);
-    if (board.words.length < 2) continue;
+    let board: PuzzleBoard;
+    try { board = generateBalancedPuzzle(shuffled, 12); } catch { continue; }
     const signature = board.words.map((word) => word.id).sort().join(":");
     if (signatures.has(signature)) continue;
     signatures.add(signature);
@@ -72,7 +71,7 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     .onConflictDoUpdate({ target: workflowRuns.idempotencyKey, set: { status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date() } }).returning();
   const sources = await db.select().from(newsSources).where(eq(newsSources.enabled, true));
   let discovered = 0, failed = 0;
-  for (const source of sources) {
+  await Promise.all(sources.map(async (source) => {
     try {
       const result = await fetchFeed(source.feedUrl, { etag: source.etag ?? undefined, lastModified: source.lastModified ?? undefined });
       for (const article of result.articles) {
@@ -84,11 +83,13 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       failed++;
       await db.update(newsSources).set({ failureCount: sql`${newsSources.failureCount} + 1` }).where(eq(newsSources.id, source.id));
     }
-  }
+  }));
   let generated = 0;
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
-  const pending = await db.select().from(articles).where(and(eq(articles.status, "NORMALIZED"), gte(articles.createdAt, dayStart))).limit(120);
+  const pendingBySource = await Promise.all(sources.map((source) => db.select().from(articles)
+    .where(and(eq(articles.sourceId, source.id), eq(articles.status, "NORMALIZED"), gte(articles.createdAt, dayStart))).limit(30)));
+  const pending = Array.from({ length: 30 }, (_, index) => pendingBySource.map((items) => items[index]).filter(Boolean)).flat();
   const groups = clusterArticles(pending.map((article) => ({
     externalId: article.id,
     title: article.title,
@@ -146,8 +147,8 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
   const existingDailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
-    .limit(40);
-  if (existingDailyCandidates.length < 40) {
+    .limit(120);
+  if (existingDailyCandidates.length < 120) {
     let fallbackPoolSize = existingDailyCandidates.length;
     for (const article of pending) {
       const [candidate] = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
@@ -158,13 +159,13 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: article.id }).onConflictDoNothing();
       await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
       generated++;
-      if (++fallbackPoolSize >= 40) break;
+      if (++fallbackPoolSize >= 120) break;
     }
   }
   const dailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
-    .limit(40);
+    .limit(120);
   if (dailyCandidates.length >= 2) {
     const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
       .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));

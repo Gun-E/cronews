@@ -2,24 +2,26 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PuzzleBoard } from "@/server/puzzle/types";
-import { buildProgressiveHints, normalizeCellValue } from "./client-logic";
+import { buildProgressiveHints } from "./client-logic";
 
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
 const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 const QUIZ_SECONDS = 15 * 60;
 
-function LetterInput({ id, index, value, disabled, onCommit, onPasteText, onEmptyBackspace }: { id: string; index: number; value: string; disabled: boolean; onCommit: (value: string, moveFocus?: boolean) => void; onPasteText: (value: string) => void; onEmptyBackspace: () => void }) {
+function WordKeyboardInput({ id, value, length, disabled, onCommit }: { id: string; value: string; length: number; disabled: boolean; onCommit: (value: string) => void }) {
   const [draft, setDraft] = useState(value);
   const composing = useRef(false);
-  const ignoreNextChange = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!composing.current) setDraft(value); }, [value]);
-  return <input id={id} aria-label={`${index + 1}번째 글자`} value={draft} disabled={disabled} autoComplete="off" inputMode="text"
+  const commit = (raw: string) => { const next = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, length).join(""); setDraft(next); onCommit(next); };
+  return <div className="letter-inputs" aria-label={`${length}글자 정답 입력`} onClick={() => inputRef.current?.focus()}>
+    <input ref={inputRef} id={id} className="keyboard-capture" value={draft} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" aria-label="정답 키보드 입력"
     onCompositionStart={() => { composing.current = true; }}
-    onCompositionEnd={(event) => { composing.current = false; const next = normalizeCellValue(event.currentTarget.value); ignoreNextChange.current = true; setDraft(next); onCommit(next, true); window.setTimeout(() => { ignoreNextChange.current = false; }, 0); }}
-    onChange={(event) => { if (ignoreNextChange.current) return; const raw = event.target.value; setDraft(raw); if (!composing.current) { const next = normalizeCellValue(raw); setDraft(next); onCommit(next, true); } }}
-    onPaste={(event) => { const pasted = event.clipboardData.getData("text"); if ([...pasted].length > 1) { event.preventDefault(); onPasteText(pasted); } }}
-    onKeyDown={(event) => { if (event.key === "Backspace" && !draft) onEmptyBackspace(); }} />;
+    onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }}
+    onChange={(event) => { setDraft(event.target.value); if (!composing.current) commit(event.target.value); }} />
+    {Array.from({ length }, (_, index) => <input className="letter-slot" key={index} value={[...value][index] ?? ""} readOnly tabIndex={-1} aria-label={`${index + 1}번째 글자`} />)}
+  </div>;
 }
 
 export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeSubmission = false, sequenceNumber = 1, dailyLimit = 1, completedNumbers = [] }: { puzzle: PuzzleBoard; puzzleId?: string; editionDate?: string; accountName?: string; resumeSubmission?: boolean; sequenceNumber?: number; dailyLimit?: number; completedNumbers?: number[] }) {
@@ -31,7 +33,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showSubmit, setShowSubmit] = useState(false);
-  const [displayName, setDisplayName] = useState(accountName ?? "");
+  const displayName = accountName ?? "비회원";
   const [result, setResult] = useState<Result | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -43,7 +45,6 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
     try {
       const data = JSON.parse(saved) as { entries?: Record<string, string>; startedAt?: number; name?: string; usedHintIds?: string[] };
       if (data.entries) setEntries(data.entries);
-      if (data.name && !accountName) setDisplayName(data.name);
       if (data.usedHintIds) setUsedHintIds(data.usedHintIds);
       if (data.startedAt) { setStarted(true); setStartedAt(data.startedAt); setElapsed(Math.min(QUIZ_SECONDS, Math.max(0, Math.floor((Date.now() - data.startedAt) / 1000)))); }
     } catch { window.localStorage.removeItem(storageKey); }
@@ -67,14 +68,12 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   const filled = useMemo(() => puzzle.words.filter((word) => [...word.answer].every((_, index) => Boolean(entries[cellKey(word, index)]))).length, [entries, puzzle.words]);
   const persist = (nextEntries = entries, nextHints = usedHintIds) => window.localStorage.setItem(storageKey, JSON.stringify({ startedAt, entries: nextEntries, name: displayName, usedHintIds: nextHints }));
   const startGame = () => { const now = Date.now(); setStarted(true); setStartedAt(now); setElapsed(0); window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: now, entries: {}, name: displayName, usedHintIds: [] })); };
-  const updateCharacters = (index: number, value: string, moveFocus = true) => {
+  const updateActiveAnswer = (value: string) => {
     const characters = [...value.normalize("NFC").replace(/\s/g, "").toUpperCase()];
     const next = { ...entries };
-    if (!characters.length) delete next[cellKey(active, index)];
-    else characters.slice(0, active.answer.length - index).forEach((character, offset) => { next[cellKey(active, index + offset)] = character; });
+    [...active.answer].forEach((_, index) => { delete next[cellKey(active, index)]; });
+    characters.slice(0, active.answer.length).forEach((character, index) => { next[cellKey(active, index)] = character; });
     setEntries(next); persist(next);
-    const nextIndex = Math.min(index + Math.max(characters.length, 1), active.answer.length - 1);
-    if (moveFocus && characters.length && index < active.answer.length - 1) document.getElementById(`answer-${active.id}-${nextIndex}`)?.focus();
   };
   const activeHints = buildProgressiveHints(active.answer, active.hints, active.hint);
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
@@ -94,7 +93,6 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
       setResult(await response.json() as Result); setShowSubmit(false); persist();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "제출에 실패했습니다."); } finally { setSubmitting(false); }
   };
-  const continueWithLogin = () => { persist(); window.location.href = "/login?next=%2F%3Fsubmit%3Dpending"; };
   const sources = Array.from(new Map(puzzle.words.flatMap((word) => word.sources ?? []).map((source) => [source.url, source])).values());
 
   return <section className="game-shell">
@@ -103,11 +101,11 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
       <div className={`timer-panel ${timerState}`}><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{remaining ? "남은 시간" : "시간 종료"}</span></div><time dateTime={`PT${remaining}S`}>{formatClock(remaining)}</time></div><div className="timer-track" role="progressbar" aria-label="남은 시간" aria-valuemin={0} aria-valuemax={QUIZ_SECONDS} aria-valuenow={remaining}><span style={{ width: `${(remaining / QUIZ_SECONDS) * 100}%` }} /></div><div className="timer-meta"><span>{editionDate} · 퍼즐 {sequenceNumber}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
       {accountName && <nav className="puzzle-picker" aria-label="오늘의 퍼즐 선택"><div><strong>오늘의 도전</strong><span>{completedNumbers.length}/{dailyLimit}개 완료</span></div><div className="puzzle-numbers">{Array.from({ length: dailyLimit }, (_, index) => index + 1).map((number) => <a key={number} href={`/?puzzle=${number}`} className={`${number === sequenceNumber ? "current" : ""} ${completedNumbers.includes(number) ? "completed" : ""}`}>{completedNumbers.includes(number) ? "✓" : number}</a>)}</div></nav>}
       <div className="game-layout"><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const word = owners.find((owner) => owner.id === selected) ?? owners[0]; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => setSelected(word.id)}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
-        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><div className="letter-inputs" aria-label={`${active.answer.length}글자 정답 입력`}>{[...active.answer].map((_, index) => <LetterInput id={`answer-${active.id}-${index}`} key={`${active.id}-${index}`} index={index} value={entries[cellKey(active, index)] ?? ""} disabled={Boolean(result) || !remaining} onCommit={(value, moveFocus) => updateCharacters(index, value, moveFocus)} onPasteText={(value) => updateCharacters(index, value, true)} onEmptyBackspace={() => { if (index > 0) document.getElementById(`answer-${active.id}-${index - 1}`)?.focus(); }} />)}</div>
+        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={answers[active.id] ?? ""} length={active.answer.length} disabled={Boolean(result) || !remaining} onCommit={updateActiveAnswer} />
           <div className="hint-area progressive"><div className="hint-heading"><strong>단계별 힌트</strong><span>{revealedHints.length}/5 · 단계마다 랭킹 반영</span></div>{revealedHints.map((hint, index) => <p key={index}><strong>{index + 1}단계</strong>{hint}</p>)}<button type="button" onClick={useHint} disabled={!activeHints.length || revealedHints.length >= activeHints.length || Boolean(result)}>{revealedHints.length ? `${revealedHints.length + 1}단계 힌트 보기` : "1단계 힌트 보기"}</button></div>
-          <div className="clue-list">{puzzle.words.map((word, index) => { const count = usedHintIds.filter((id) => id.startsWith(`${word.id}:`)).length; return <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{count > 0 && <small>힌트 {count}단계</small>}</button>; })}</div><button className="submit" type="button" onClick={() => setShowSubmit(true)} disabled={Boolean(result)}>{result ? "제출 완료" : "정답 제출"}</button></aside></div>
+          <div className="clue-list">{puzzle.words.map((word, index) => { const count = usedHintIds.filter((id) => id.startsWith(`${word.id}:`)).length; return <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{count > 0 && <small>힌트 {count}단계</small>}</button>; })}</div><button className="submit" type="button" onClick={() => accountName ? setShowSubmit(true) : void submit()} disabled={Boolean(result) || submitting}>{result ? "제출 완료" : submitting ? "채점 중…" : "정답 제출"}</button>{error && <p className="error">{error}</p>}</aside></div>
     </>}
-    {showSubmit && <div className="modal-backdrop"><div className="result-card submit-choice" role="dialog" aria-modal="true"><button className="close" onClick={() => setShowSubmit(false)}>×</button><span className="eyebrow">정답 제출</span><h2>기록을 어떻게 남길까요?</h2>{accountName ? <div className="signed-player"><span>로그인 계정</span><strong>{accountName}</strong></div> : <><label>비회원 닉네임<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={20} /></label><button className="submit" onClick={submit} disabled={submitting}>닉네임으로 제출</button><div className="choice-divider"><span>또는</span></div><button className="login-submit" onClick={continueWithLogin}>로그인하고 제출</button></>}{accountName && <button className="submit" onClick={submit} disabled={submitting}>{accountName}(으)로 제출</button>}{error && <p className="error">{error}</p>}</div></div>}
+    {showSubmit && accountName && <div className="modal-backdrop"><div className="result-card submit-choice" role="dialog" aria-modal="true"><button className="close" onClick={() => setShowSubmit(false)}>×</button><span className="eyebrow">정답 제출</span><h2>로그인 계정으로 기록할까요?</h2><div className="signed-player"><span>로그인 계정</span><strong>{accountName}</strong></div><button className="submit" onClick={submit} disabled={submitting}>{accountName}(으)로 제출</button>{error && <p className="error">{error}</p>}</div></div>}
     {result && <div className="modal-backdrop"><div className="result-card result celebration" role="dialog" aria-modal="true"><div className="celebration-mark">✓</div><span className="eyebrow">오늘의 퀴즈 완료</span><h2>축하합니다!</h2><p className="result-summary">총 <strong>{result.totalCount}개</strong> 중 <strong>{result.correctCount}개</strong>를 맞혔습니다.</p><div className="rank-hero"><span>오늘의 랭킹</span><strong>{result.rank}등</strong><small>총 {result.participants}명 참여</small></div><div className="score-grid compact"><div><span>걸린 시간</span><strong>{formatTime(result.elapsedSeconds)}</strong></div><div><span>사용한 힌트</span><strong>{result.hintCount}단계</strong></div></div>{sources.length > 0 && <div className="news-sources"><strong>이 문제를 만든 뉴스</strong>{sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer"><span>{source.publisher ?? "원문 기사"}</span>{source.title}</a>)}</div>}<div className="result-actions">{result.playerType === "USER" && sequenceNumber < dailyLimit && <button className="next-puzzle" onClick={() => { window.location.href = `/?puzzle=${sequenceNumber + 1}`; }}>다음 퍼즐 풀기</button>}<button className="submit" onClick={() => setResult(null)}>결과 닫기</button></div></div></div>}
   </section>;
 }
