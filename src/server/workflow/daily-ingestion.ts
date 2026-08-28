@@ -6,7 +6,7 @@ import { fetchFeed } from "@/server/ingestion/feed";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
-import { generateBalancedPuzzle, isPuzzleConnected } from "@/server/puzzle/generator";
+import { generateBalancedPuzzle, validateCrosswordRules } from "@/server/puzzle/generator";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -16,15 +16,16 @@ const FALLBACK_STOP_WORDS = new Set(["관련", "대한", "위한", "오늘", "�
 function fallbackQuizItems(group: { title: string; url: string; externalId?: string }[]) {
   const seen = new Set<string>();
   return group.flatMap((article) => {
-    const answer = (article.title.match(/[가-힣A-Za-z0-9]{2,8}/g) ?? [])
-      .map((word) => word.replace(/^(속보|단독|종합)$/, ""))
-      .find((word) => word.length >= 2 && !FALLBACK_STOP_WORDS.has(word) && !seen.has(word));
-    if (!answer) return [];
-    seen.add(answer);
-    const masked = article.title.replace(answer, "○".repeat([...answer].length));
     let publisher = "뉴스 원문";
     try { publisher = new URL(article.url).hostname.replace(/^www\./, ""); } catch { /* keep fallback */ }
-    return [{
+    const answers = (article.title.match(/[가-힣A-Za-z0-9]{2,10}/g) ?? [])
+      .map((word) => word.replace(/^(속보|단독|종합)$/, "").replace(/(에서|에게|으로|은|는|이|가|을|를|에|의|로|과|와|도|만)$/u, ""))
+      .filter((word) => word.length >= 2 && word.length <= 8 && !FALLBACK_STOP_WORDS.has(word) && !seen.has(word))
+      .slice(0, 3);
+    return answers.map((answer) => {
+      seen.add(answer);
+      const masked = article.title.replace(answer, "○".repeat([...answer].length));
+      return {
       answer,
       normalizedAnswer: answer.normalize("NFC").replace(/\s/g, "").toUpperCase(),
       question: `“${masked}” 기사 제목의 빈칸에 들어갈 핵심어는 무엇일까요?`,
@@ -37,25 +38,32 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
       ],
       explanation: `원문 기사 제목은 “${article.title}”입니다. 기사 원문에서 맥락을 확인할 수 있습니다.`,
       evidence: [{ articleId: article.externalId ?? article.url, fact: article.title }],
-    }];
-  }).slice(0, 5);
+      };
+    });
+  }).slice(0, 15);
 }
 
 export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
-  const candidates = inputs.slice(0, 120);
+  const candidates = inputs.slice(0, 220);
+  const rankedSeeds = [...candidates].sort((a, b) => {
+    const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
+    return degree(b) - degree(a);
+  });
   const boards: PuzzleBoard[] = [];
   const signatures = new Set<string>();
-  for (let attempt = 0; attempt < 5000 && boards.length < limit; attempt++) {
-    const shuffled = [...candidates];
+  for (let attempt = 0; attempt < 300 && boards.length < limit; attempt++) {
+    const seedWord = rankedSeeds[attempt % Math.min(80, rankedSeeds.length)];
+    const shuffled = candidates.filter((word) => word.id !== seedWord.id);
     let seed = ((attempt + 1) * 2654435761) >>> 0;
     for (let index = shuffled.length - 1; index > 0; index--) {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       const swapIndex = seed % (index + 1);
       [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
     }
+    shuffled.unshift(seedWord);
     let board: PuzzleBoard;
     try { board = generateBalancedPuzzle(shuffled, 12); } catch { continue; }
-    if (!isPuzzleConnected(board)) continue;
+    if (!validateCrosswordRules(board)) continue;
     const signature = board.words.map((word) => word.id).sort().join(":");
     if (signatures.has(signature)) continue;
     signatures.add(signature);
@@ -91,6 +99,9 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
   const pendingBySource = await Promise.all(sources.map((source) => db.select().from(articles)
     .where(and(eq(articles.sourceId, source.id), eq(articles.status, "NORMALIZED"), gte(articles.createdAt, dayStart))).limit(30)));
   const pending = Array.from({ length: 30 }, (_, index) => pendingBySource.map((items) => items[index]).filter(Boolean)).flat();
+  const candidateArticlesBySource = await Promise.all(sources.map((source) => db.select().from(articles)
+    .where(and(eq(articles.sourceId, source.id), gte(articles.createdAt, dayStart))).limit(40)));
+  const candidateArticlePool = Array.from({ length: 40 }, (_, index) => candidateArticlesBySource.map((items) => items[index]).filter(Boolean)).flat();
   const groups = clusterArticles(pending.map((article) => ({
     externalId: article.id,
     title: article.title,
@@ -148,25 +159,28 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
   const existingDailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
-    .limit(120);
-  if (existingDailyCandidates.length < 120) {
+    .limit(300);
+  if (existingDailyCandidates.length < 300) {
     let fallbackPoolSize = existingDailyCandidates.length;
-    for (const article of pending) {
-      const [candidate] = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
-      if (!candidate) continue;
+    for (const article of candidateArticlePool) {
+      const fallbackCandidates = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
+      if (!fallbackCandidates.length) continue;
       const key = clusterKey([{ externalId: article.id, title: article.title, url: article.canonicalUrl, summary: article.summary ?? undefined, publishedAt: article.publishedAt ?? undefined }]);
       const [cluster] = await db.insert(articleClusters).values({ representativeTitle: article.title, clusterKey: key })
         .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: article.title } }).returning();
       await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: article.id }).onConflictDoNothing();
-      await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
-      generated++;
-      if (++fallbackPoolSize >= 120) break;
+      for (const candidate of fallbackCandidates) {
+        await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
+        generated++; fallbackPoolSize++;
+        if (fallbackPoolSize >= 300) break;
+      }
+      if (fallbackPoolSize >= 300) break;
     }
   }
   const dailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
-    .limit(120);
+    .limit(300);
   if (dailyCandidates.length >= 2) {
     const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
       .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));

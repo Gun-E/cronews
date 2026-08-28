@@ -27,19 +27,6 @@ function canPlace(board: PuzzleBoard, answer: string, row: number, col: number, 
   return crossings;
 }
 
-function canPlaceDense(board: PuzzleBoard, answer: string, row: number, col: number, direction: Direction): number {
-  const [dr, dc] = delta(direction);
-  const endRow = row + dr * (answer.length - 1), endCol = col + dc * (answer.length - 1);
-  if (row < 0 || col < 0 || endRow >= board.height || endCol >= board.width) return -1;
-  let crossings = 0;
-  for (let index = 0; index < answer.length; index++) {
-    const existing = board.cells[row + dr * index][col + dc * index];
-    if (existing && existing !== answer[index]) return -1;
-    if (existing === answer[index]) crossings++;
-  }
-  return crossings;
-}
-
 function place(board: PuzzleBoard, input: PuzzleInput, row: number, col: number, direction: Direction, crossings: number) {
   const answer = normalizeAnswer(input.answer), [dr, dc] = delta(direction);
   for (let i = 0; i < answer.length; i++) board.cells[row + dr * i][col + dc * i] = answer[i];
@@ -73,41 +60,64 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
   const normalized = inputs.map((input) => ({ ...input, answer: normalizeAnswer(input.answer) }))
     .filter((input) => /^[가-힣A-Z0-9]{2,8}$/.test(input.answer));
   if (normalized.length < pairCount * 2) throw new Error("Not enough words for a balanced puzzle");
-  const size = 41;
+  const size = 61;
   const board = emptyBoard(size);
-  const unused = new Map(normalized.map((word) => [word.id, word]));
+  const degreeById = new Map(normalized.map((word) => [word.id, normalized.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0)]));
   const first = normalized[0];
   place(board, first, Math.floor(size / 2), Math.floor((size - first.answer.length) / 2), "ACROSS", 0);
-  unused.delete(first.id);
-  let across = 1, down = 0;
-  while (across < pairCount || down < pairCount) {
-    const target: Direction = down < pairCount && (down <= across || across >= pairCount) ? "DOWN" : "ACROSS";
-    let best: { input: PuzzleInput; row: number; col: number; crossings: number; score: number } | undefined;
-    for (const input of unused.values()) {
+  const clone = (source: PuzzleBoard): PuzzleBoard => ({ ...source, cells: source.cells.map((row) => [...row]), words: source.words.map((word) => ({ ...word })) });
+  let visitedNodes = 0;
+  const maxNodes = 20_000;
+  const targetWords = pairCount * 2;
+  const search = (current: PuzzleBoard, unused: PuzzleInput[]): PuzzleBoard | null => {
+    if (current.words.length === targetWords) return current;
+    if (++visitedNodes > maxNodes) return null;
+    const anchor = current.words.at(-1)!;
+    const target: Direction = anchor.direction === "ACROSS" ? "DOWN" : "ACROSS";
+    const placements: { input: PuzzleInput; row: number; col: number; crossings: number; score: number }[] = [];
+    const placementKeys = new Set<string>();
+    for (const input of unused) {
+      const futureMatches = degreeById.get(input.id) ?? 0;
       for (let candidateIndex = 0; candidateIndex < input.answer.length; candidateIndex++) {
-        for (const existing of board.words) {
-          if (existing.direction === target) continue;
-          for (let existingIndex = 0; existingIndex < existing.answer.length; existingIndex++) {
-            if (input.answer[candidateIndex] !== existing.answer[existingIndex]) continue;
-            const row = target === "DOWN" ? existing.row - candidateIndex : existing.row + existingIndex;
-            const col = target === "DOWN" ? existing.col + existingIndex : existing.col - candidateIndex;
-            const crossings = canPlaceDense(board, input.answer, row, col, target);
+        for (let existingIndex = 0; existingIndex < anchor.answer.length; existingIndex++) {
+            if (input.answer[candidateIndex] !== anchor.answer[existingIndex]) continue;
+            const row = target === "DOWN" ? anchor.row - candidateIndex : anchor.row + existingIndex;
+            const col = target === "DOWN" ? anchor.col + existingIndex : anchor.col - candidateIndex;
+            const crossings = canPlace(current, input.answer, row, col, target);
             if (crossings < 1) continue;
+            const key = `${input.id}:${row}:${col}:${target}`;
+            if (placementKeys.has(key)) continue;
+            placementKeys.add(key);
             const endRow = row + (target === "DOWN" ? input.answer.length - 1 : 0);
             const endCol = col + (target === "ACROSS" ? input.answer.length - 1 : 0);
             const centerDistance = Math.abs((row + endRow) / 2 - size / 2) + Math.abs((col + endCol) / 2 - size / 2);
-            const score = crossings * 100 - centerDistance;
-            if (!best || score > best.score) best = { input, row, col, crossings, score };
-          }
+            const score = crossings * 1000 + futureMatches * 4 - centerDistance;
+            placements.push({ input, row, col, crossings, score });
         }
       }
     }
-    if (!best) throw new Error(`Connected puzzle stopped at ${across} across and ${down} down`);
-    place(board, best.input, best.row, best.col, target, best.crossings);
-    unused.delete(best.input.id);
-    if (target === "ACROSS") across++; else down++;
-  }
-  return board;
+    placements.sort((a, b) => b.score - a.score);
+    for (const candidate of placements.slice(0, 100)) {
+      const next = clone(current);
+      place(next, candidate.input, candidate.row, candidate.col, target, candidate.crossings);
+      if (!validateCrosswordRules(next)) continue;
+      const solved = search(next, unused.filter((word) => word.id !== candidate.input.id));
+      if (solved) return solved;
+    }
+    return null;
+  };
+  const solved = search(board, normalized.slice(1));
+  if (!solved) throw new Error(`DFS could not build a ${pairCount}/${pairCount} crossword after ${visitedNodes} nodes`);
+  const occupied = solved.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => cell ? { row: rowIndex, col: colIndex } : null).filter(Boolean)) as { row: number; col: number }[];
+  const minRow = Math.min(...occupied.map((cell) => cell.row)), maxRow = Math.max(...occupied.map((cell) => cell.row));
+  const minCol = Math.min(...occupied.map((cell) => cell.col)), maxCol = Math.max(...occupied.map((cell) => cell.col));
+  return {
+    ...solved,
+    width: maxCol - minCol + 1,
+    height: maxRow - minRow + 1,
+    cells: solved.cells.slice(minRow, maxRow + 1).map((row) => row.slice(minCol, maxCol + 1)),
+    words: solved.words.map((word) => ({ ...word, row: word.row - minRow, col: word.col - minCol })),
+  };
 }
 
 export function validatePuzzle(board: PuzzleBoard): boolean {
@@ -130,4 +140,29 @@ export function isPuzzleConnected(board: PuzzleBoard): boolean {
     }
   }
   return visited.size === board.words.length;
+}
+
+export function validateCrosswordRules(board: PuzzleBoard): boolean {
+  if (!validatePuzzle(board) || !isPuzzleConnected(board)) return false;
+  const owners = new Map<string, PlacedWord[]>();
+  for (const word of board.words) for (let index = 0; index < word.answer.length; index++) {
+    const row = word.row + (word.direction === "DOWN" ? index : 0), col = word.col + (word.direction === "ACROSS" ? index : 0);
+    const key = `${row}:${col}`;
+    owners.set(key, [...(owners.get(key) ?? []), word]);
+  }
+  for (const word of board.words) {
+    const [dr, dc] = delta(word.direction);
+    const endRow = word.row + dr * (word.answer.length - 1), endCol = word.col + dc * (word.answer.length - 1);
+    if (board.cells[word.row - dr]?.[word.col - dc] || board.cells[endRow + dr]?.[endCol + dc]) return false;
+    for (let index = 0; index < word.answer.length; index++) {
+      const row = word.row + dr * index, col = word.col + dc * index;
+      const cellOwners = owners.get(`${row}:${col}`) ?? [];
+      if (new Set(cellOwners.map((owner) => owner.direction)).size !== cellOwners.length) return false;
+      if (cellOwners.length > 1) continue;
+      const sideA = word.direction === "ACROSS" ? board.cells[row - 1]?.[col] : board.cells[row]?.[col - 1];
+      const sideB = word.direction === "ACROSS" ? board.cells[row + 1]?.[col] : board.cells[row]?.[col + 1];
+      if (sideA || sideB) return false;
+    }
+  }
+  return true;
 }
