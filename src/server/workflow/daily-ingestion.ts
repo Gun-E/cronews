@@ -6,7 +6,7 @@ import { fetchFeed } from "@/server/ingestion/feed";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
-import { generateBalancedPuzzle, validateCrosswordRules } from "@/server/puzzle/generator";
+import { crosswordDiagonalBias, generateBalancedPuzzle, validateCrosswordRules } from "@/server/puzzle/generator";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -44,7 +44,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
 }
 
 export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
-  const candidates = inputs.slice(0, 220);
+  const candidates = inputs.slice(0, 180);
   const rankedSeeds = [...candidates].sort((a, b) => {
     const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
     return degree(b) - degree(a);
@@ -64,6 +64,7 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): Puz
     let board: PuzzleBoard;
     try { board = generateBalancedPuzzle(shuffled, 12); } catch { continue; }
     if (!validateCrosswordRules(board)) continue;
+    if (crosswordDiagonalBias(board) > 0.42) continue;
     const signature = board.words.map((word) => word.id).sort().join(":");
     if (signatures.has(signature)) continue;
     signatures.add(signature);

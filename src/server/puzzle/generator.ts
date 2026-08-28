@@ -82,6 +82,15 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
         : acrossCount === downCount ? ((layoutSeed + current.words.length) % 2 ? "ACROSS" : "DOWN")
           : acrossCount > downCount ? "DOWN" : "ACROSS";
     const anchors = current.words.filter((word) => word.direction !== target);
+    const occupied = current.cells.flatMap((cells, row) => cells.map((cell, col) => cell ? { row, col } : null).filter(Boolean)) as { row: number; col: number }[];
+    const currentBounds = {
+      minRow: Math.min(...occupied.map((cell) => cell.row)), maxRow: Math.max(...occupied.map((cell) => cell.row)),
+      minCol: Math.min(...occupied.map((cell) => cell.col)), maxCol: Math.max(...occupied.map((cell) => cell.col)),
+    };
+    const occupiedKeys = new Set(occupied.map((cell) => `${cell.row}:${cell.col}`));
+    const currentSums = occupied.reduce<{ row: number; col: number; rowCol: number }>((sums, cell) => ({
+      row: sums.row + cell.row, col: sums.col + cell.col, rowCol: sums.rowCol + cell.row * cell.col,
+    }), { row: 0, col: 0, rowCol: 0 });
     const placements: { input: PuzzleInput; row: number; col: number; crossings: number; score: number }[] = [];
     const placementKeys = new Set<string>();
     for (const input of unused) {
@@ -99,13 +108,26 @@ export function generateBalancedPuzzle(inputs: PuzzleInput[], pairCount = 12): P
             const endRow = row + (target === "DOWN" ? input.answer.length - 1 : 0);
             const endCol = col + (target === "ACROSS" ? input.answer.length - 1 : 0);
             const centerDistance = Math.abs((row + endRow) / 2 - size / 2) + Math.abs((col + endCol) / 2 - size / 2);
-            const jitter = hash(`${layoutSeed}:${current.words.length}:${input.id}:${row}:${col}`) % 240;
-            const shapeBias = layoutStyle === 0 ? -centerDistance * 14
-              : layoutStyle === 1 ? centerDistance * 5
-                : layoutStyle === 2 ? (target === "ACROSS" ? -Math.abs(row - size / 2) * 8 : -Math.abs(col - size / 2) * 8)
-                  : -centerDistance * 3;
-            const crossingWeight = layoutStyle === 3 ? 1_300 : 900;
-            const score = crossings * crossingWeight + futureMatches * 4 + shapeBias + jitter;
+            const minRow = Math.min(currentBounds.minRow, row), maxRow = Math.max(currentBounds.maxRow, endRow);
+            const minCol = Math.min(currentBounds.minCol, col), maxCol = Math.max(currentBounds.maxCol, endCol);
+            const verticalImbalance = Math.abs((size / 2 - minRow) - (maxRow - size / 2));
+            const horizontalImbalance = Math.abs((size / 2 - minCol) - (maxCol - size / 2));
+            const width = maxCol - minCol + 1, height = maxRow - minRow + 1;
+            const aspectBias = layoutStyle === 0 ? -Math.abs(width - height) * 9
+              : layoutStyle === 1 ? (width - height) * 4
+                : layoutStyle === 2 ? (height - width) * 4
+                  : -Math.abs(width - height) * 3;
+            const addedCells = Array.from({ length: input.answer.length }, (_, index) => ({
+              row: row + (target === "DOWN" ? index : 0), col: col + (target === "ACROSS" ? index : 0),
+            })).filter((cell) => !occupiedKeys.has(`${cell.row}:${cell.col}`));
+            const count = occupied.length + addedCells.length;
+            const sums = addedCells.reduce<{ row: number; col: number; rowCol: number }>((result, cell) => ({
+              row: result.row + cell.row, col: result.col + cell.col, rowCol: result.rowCol + cell.row * cell.col,
+            }), currentSums);
+            const diagonalCovariance = Math.abs(sums.rowCol / count - (sums.row / count) * (sums.col / count));
+            const jitter = hash(`${layoutSeed}:${current.words.length}:${input.id}:${row}:${col}`) % 120;
+            const score = crossings * 1_150 + futureMatches * 4 - centerDistance * 9
+              - (verticalImbalance + horizontalImbalance) * 28 - diagonalCovariance * 34 + aspectBias + jitter;
             placements.push({ input, row, col, crossings, score });
         }
       }
@@ -139,6 +161,17 @@ export function validatePuzzle(board: PuzzleBoard): boolean {
     const [dr, dc] = delta(word.direction);
     return [...word.answer].every((char, index) => board.cells[word.row + dr * index]?.[word.col + dc * index] === char);
   });
+}
+
+export function crosswordDiagonalBias(board: PuzzleBoard): number {
+  const occupied = board.cells.flatMap((cells, row) => cells.map((cell, col) => cell ? { row, col } : null).filter(Boolean)) as { row: number; col: number }[];
+  if (occupied.length < 2) return 0;
+  const meanRow = occupied.reduce((sum, cell) => sum + cell.row, 0) / occupied.length;
+  const meanCol = occupied.reduce((sum, cell) => sum + cell.col, 0) / occupied.length;
+  const covariance = occupied.reduce((sum, cell) => sum + (cell.row - meanRow) * (cell.col - meanCol), 0);
+  const rowVariance = occupied.reduce((sum, cell) => sum + (cell.row - meanRow) ** 2, 0);
+  const colVariance = occupied.reduce((sum, cell) => sum + (cell.col - meanCol) ** 2, 0);
+  return rowVariance && colVariance ? Math.abs(covariance / Math.sqrt(rowVariance * colVariance)) : 0;
 }
 
 export function isPuzzleConnected(board: PuzzleBoard): boolean {
