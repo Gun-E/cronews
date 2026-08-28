@@ -55,12 +55,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   });
   const [ranking] = await db.select({ rank: sql<number>`count(*)::int + 1` }).from(puzzleSubmissions).where(and(
     eq(puzzleSubmissions.puzzleId, puzzle.id),
+    eq(puzzleSubmissions.playerType, values.playerType),
     or(
       sql`${puzzleSubmissions.correctCount} > ${correctCount}`,
       and(eq(puzzleSubmissions.correctCount, correctCount), sql`${puzzleSubmissions.hintCount} < ${usedHintIds.length}`),
       and(eq(puzzleSubmissions.correctCount, correctCount), eq(puzzleSubmissions.hintCount, usedHintIds.length), sql`${puzzleSubmissions.elapsedSeconds} < ${parsed.data.elapsedSeconds}`),
     ),
   ));
-  const [total] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzleSubmissions).where(eq(puzzleSubmissions.puzzleId, puzzle.id));
+  const [total] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzleSubmissions).where(and(eq(puzzleSubmissions.puzzleId, puzzle.id), eq(puzzleSubmissions.playerType, values.playerType)));
   return Response.json({ correctCount, totalCount: board.words.length, elapsedSeconds: parsed.data.elapsedSeconds, hintCount: usedHintIds.length, rank: ranking.rank, participants: total.count, playerType: values.playerType });
 }
