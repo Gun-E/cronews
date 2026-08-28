@@ -5,6 +5,8 @@ import type { PuzzleBoard } from "@/server/puzzle/types";
 
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
+const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+const QUIZ_SECONDS = 15 * 60;
 
 export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeSubmission = false }: { puzzle: PuzzleBoard; puzzleId?: string; editionDate?: string; accountName?: string; resumeSubmission?: boolean }) {
   const storageKey = `cronews:${puzzleId ?? "sample"}`;
@@ -30,11 +32,11 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
         setEntries(restored);
       }
       if (data.name && !accountName) setDisplayName(data.name);
-      if (data.startedAt) setElapsed(Math.max(0, Math.floor((Date.now() - data.startedAt) / 1000)));
+      if (data.startedAt) setElapsed(Math.min(QUIZ_SECONDS, Math.max(0, Math.floor((Date.now() - data.startedAt) / 1000))));
       if (data.usedHintIds) setUsedHintIds(data.usedHintIds);
     } catch { window.localStorage.removeItem(storageKey); }
     else window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: Date.now(), answers: {} }));
-    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    const timer = window.setInterval(() => setElapsed((value) => Math.min(QUIZ_SECONDS, value + 1)), 1000);
     return () => window.clearInterval(timer);
   }, [accountName, puzzle.words, storageKey]);
 
@@ -43,6 +45,8 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   }, [accountName, resumeSubmission]);
 
   const active = puzzle.words.find((word) => word.id === selected) ?? puzzle.words[0];
+  const remaining = Math.max(0, QUIZ_SECONDS - elapsed);
+  const timerState = remaining <= 60 ? "danger" : remaining <= 300 ? "warning" : "normal";
   const cellKey = (word: typeof active, index: number) => `${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`;
   const answers = useMemo(() => Object.fromEntries(puzzle.words.map((word) => [word.id, [...word.answer].map((_, index) => entries[cellKey(word, index)] ?? "").join("")])), [entries, puzzle.words]);
   const filled = useMemo(() => puzzle.words.filter((word) => [...word.answer].every((_, index) => Boolean(entries[cellKey(word, index)]))).length, [entries, puzzle.words]);
@@ -80,8 +84,8 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, resumeS
   };
 
   return <section className="game-shell">
-    <header className="game-header"><div><a className="cronews-logo" href="/" aria-label="CRONEWS 홈"><img src="/images/logo.svg" alt="CRONEWS" /></a><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a><time>{formatTime(elapsed)}</time></div></header>
-    <div className="edition"><span>{editionDate ?? "미리보기"}</span><strong>{filled}/{puzzle.words.length} 입력 완료</strong></div>
+    <header className="game-header"><div><a className="cronews-logo" href="/" aria-label="CRONEWS 홈"><img src="/images/logo.svg" alt="CRONEWS" /></a><span>오늘의 통합 뉴스 퀴즈</span></div><div className="header-actions"><a href={accountName ? "/ranking" : "/login"}>{accountName ? `${accountName} · 랭킹` : "로그인"}</a></div></header>
+    <div className={`timer-panel ${timerState}`}><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{remaining ? "남은 시간" : "시간 종료"}</span></div><time dateTime={`PT${remaining}S`}>{formatClock(remaining)}</time></div><div className="timer-track" role="progressbar" aria-label="남은 시간" aria-valuemin={0} aria-valuemax={QUIZ_SECONDS} aria-valuenow={remaining}><span style={{ width: `${(remaining / QUIZ_SECONDS) * 100}%` }} /></div><div className="timer-meta"><span>{editionDate ?? "오늘"}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
     <div className="game-layout">
       <div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>
         {puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => {
