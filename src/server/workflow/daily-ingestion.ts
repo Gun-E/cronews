@@ -10,6 +10,36 @@ import { generatePuzzle } from "@/server/puzzle/generator";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
 
+const FALLBACK_STOP_WORDS = new Set(["관련", "대한", "위한", "오늘", "정부", "한국", "발표", "기자", "뉴스", "단독", "종합", "논란"]);
+
+function fallbackQuizItems(group: { title: string; url: string; externalId?: string }[]) {
+  const seen = new Set<string>();
+  return group.flatMap((article) => {
+    const answer = (article.title.match(/[가-힣A-Za-z0-9]{2,8}/g) ?? [])
+      .map((word) => word.replace(/^(속보|단독|종합)$/, ""))
+      .find((word) => word.length >= 2 && !FALLBACK_STOP_WORDS.has(word) && !seen.has(word));
+    if (!answer) return [];
+    seen.add(answer);
+    const masked = article.title.replace(answer, "○".repeat([...answer].length));
+    let publisher = "뉴스 원문";
+    try { publisher = new URL(article.url).hostname.replace(/^www\./, ""); } catch { /* keep fallback */ }
+    return [{
+      answer,
+      normalizedAnswer: answer.normalize("NFC").replace(/\s/g, "").toUpperCase(),
+      question: `“${masked}” 기사 제목의 빈칸에 들어갈 핵심어는 무엇일까요?`,
+      hints: [
+        "오늘 수집된 주요 뉴스 제목에 등장한 핵심어입니다.",
+        `출처는 ${publisher} 기사입니다.`,
+        `정답은 ${[...answer].length}글자입니다.`,
+        `첫 글자는 ‘${[...answer][0]}’입니다.`,
+        `첫 글자는 ‘${[...answer][0]}’, 마지막 글자는 ‘${[...answer].at(-1)}’입니다.`,
+      ],
+      explanation: `원문 기사 제목은 “${article.title}”입니다. 기사 원문에서 맥락을 확인할 수 있습니다.`,
+      evidence: [{ articleId: article.externalId ?? article.url, fact: article.title }],
+    }];
+  }).slice(0, 5);
+}
+
 export async function runDailyIngestion(date = new Date()): Promise<IngestionSummary> {
   const db = getDb();
   const editionDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
@@ -76,6 +106,17 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     } catch (error) {
       failed++;
       console.error("quiz generation failed", error);
+      try {
+        const key = clusterKey(group);
+        const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
+          .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: group[0].title } }).returning();
+        for (const item of group) if (item.externalId) await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: item.externalId }).onConflictDoNothing();
+        for (const candidate of fallbackQuizItems(group)) {
+          await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
+          generated++;
+        }
+        for (const item of group) if (item.externalId) await db.update(articles).set({ status: "CLUSTERED" }).where(eq(articles.id, item.externalId));
+      } catch (fallbackError) { console.error("fallback quiz generation failed", fallbackError); }
     }
   }
   const dailyCandidates = await db.select().from(quizCandidates)
