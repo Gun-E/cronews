@@ -67,6 +67,7 @@ export const puzzles = pgTable("puzzles", {
   id: uuid("id").defaultRandom().primaryKey(),
   editionDate: text("edition_date").notNull(),
   category: text("category").notNull().default("ALL"),
+  sequenceNumber: integer("sequence_number").notNull().default(1),
   width: integer("width").notNull(),
   height: integer("height").notNull(),
   seed: text("seed").notNull(),
@@ -74,7 +75,7 @@ export const puzzles = pgTable("puzzles", {
   status: puzzleStatus("status").notNull().default("DRAFT"),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [uniqueIndex("puzzles_edition_category_idx").on(table.editionDate, table.category)]);
+}, (table) => [uniqueIndex("puzzles_edition_sequence_idx").on(table.editionDate, table.sequenceNumber)]);
 
 export const puzzleSubmissions = pgTable("puzzle_submissions", {
   id: uuid("id").defaultRandom().primaryKey(),

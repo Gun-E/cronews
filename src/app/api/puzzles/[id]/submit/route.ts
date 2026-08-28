@@ -24,6 +24,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const cookieStore = await cookies();
   const { data: authData } = await (await createSupabaseServerClient()).auth.getUser();
   const userId = authData.user?.id;
+  if (!userId && puzzle.sequenceNumber > 1) return Response.json({ error: "LOGIN_REQUIRED" }, { status: 403 });
   let guestId = cookieStore.get("cronews_guest_id")?.value;
   if (!userId && !guestId) {
     guestId = crypto.randomUUID();

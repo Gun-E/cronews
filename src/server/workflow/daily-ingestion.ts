@@ -92,6 +92,7 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     await db.insert(puzzles).values({
       editionDate,
       category: "ALL",
+      sequenceNumber: 1,
       width: board.width,
       height: board.height,
       seed: editionDate,
@@ -99,7 +100,7 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       status: "PUBLISHED",
       publishedAt: new Date(),
     }).onConflictDoUpdate({
-      target: [puzzles.editionDate, puzzles.category],
+      target: [puzzles.editionDate, puzzles.sequenceNumber],
       set: { width: board.width, height: board.height, grid: board, status: "PUBLISHED", publishedAt: new Date() },
     });
   }
