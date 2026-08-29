@@ -43,6 +43,13 @@
       "when": 1787911565244,
       "tag": "0005_sticky_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787985261854,
+      "tag": "0006_sloppy_tag",
+      "breakpoints": true
     }
   ]
 }

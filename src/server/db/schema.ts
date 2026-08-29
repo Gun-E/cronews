@@ -97,6 +97,15 @@ export const puzzleSubmissions = pgTable("puzzle_submissions", {
   index("puzzle_submissions_rank_idx").on(table.puzzleId, table.correctCount, table.hintCount, table.elapsedSeconds),
 ]);
 
+export const userProfiles = pgTable("user_profiles", {
+  userId: uuid("user_id").primaryKey(),
+  nickname: text("nickname").notNull(),
+  bio: text("bio").notNull().default(""),
+  avatarUrl: text("avatar_url"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("user_profiles_nickname_idx").on(table.nickname)]);
+
 export const workflowRuns = pgTable("workflow_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   idempotencyKey: text("idempotency_key").notNull(),

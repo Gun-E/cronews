@@ -30,10 +30,10 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
       normalizedAnswer: answer.normalize("NFC").replace(/\s/g, "").toUpperCase(),
       question: `“${masked}” 기사 제목의 빈칸에 들어갈 핵심어는 무엇일까요?`,
       hints: [
-        "오늘 수집된 주요 뉴스 제목에 등장한 핵심어입니다.",
-        `출처는 ${publisher} 기사입니다.`,
-        "기사 제목에서 사건의 핵심 대상이 되는 표현입니다.",
+        `“${masked}”라는 뉴스 맥락에서 핵심 대상이 되는 표현입니다.`,
         `첫 글자는 ‘${[...answer][0]}’입니다.`,
+        "초성은 다음 단계에서 앱이 자동으로 제공합니다.",
+        `${publisher} 뉴스 원문 보기`,
         `정답은 ‘${answer}’입니다.`,
       ],
       explanation: `원문 기사 제목은 “${article.title}”입니다. 기사 원문에서 맥락을 확인할 수 있습니다.`,
