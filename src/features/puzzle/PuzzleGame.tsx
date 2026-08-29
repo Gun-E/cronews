@@ -8,18 +8,18 @@ import { buildProgressiveHints } from "./client-logic";
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
 const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-function WordKeyboardInput({ id, value, length, cursor, disabled, onCursor, onInsert, onBackspace }: { id: string; value: string[]; length: number; cursor: number; disabled: boolean; onCursor: (index: number) => void; onInsert: (character: string) => void; onBackspace: () => void }) {
+function WordKeyboardInput({ id, value, length, cursor, disabled, onCursor, onCommit }: { id: string; value: string[]; length: number; cursor: number; disabled: boolean; onCursor: (index: number) => void; onCommit: (value: string, targets: number[]) => void }) {
+  const [draft, setDraft] = useState(value.join(""));
   const composing = useRef(false);
-  const ignoreNextInput = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const commit = (raw: string) => { const character = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].at(-1); if (character) onInsert(character); if (inputRef.current) inputRef.current.value = ""; };
-  return <div className="letter-inputs" aria-label={`${length}글자 정답 입력`} onClick={() => inputRef.current?.focus()}>
-    <input ref={inputRef} id={id} className="keyboard-capture" defaultValue="" disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" aria-label="정답 키보드 입력"
-    onCompositionStart={() => { composing.current = true; }}
-    onCompositionEnd={(event) => { composing.current = false; ignoreNextInput.current = true; commit(event.data); window.setTimeout(() => { ignoreNextInput.current = false; }, 0); }}
-    onInput={(event) => { if (composing.current) return; if (ignoreNextInput.current) { ignoreNextInput.current = false; event.currentTarget.value = ""; return; } const native = event.nativeEvent as InputEvent; if (native.inputType === "deleteContentBackward") onBackspace(); else commit(native.data ?? event.currentTarget.value); }}
-    onKeyDown={(event) => { if (event.key === "Backspace" && !composing.current) { event.preventDefault(); onBackspace(); } }} />
-    {Array.from({ length }, (_, index) => <button type="button" className={`letter-slot ${index === cursor ? "cursor" : ""}`} key={index} onClick={(event) => { event.stopPropagation(); onCursor(index); inputRef.current?.focus(); }} aria-label={`${index + 1}번째 글자`}>{value[index] ?? ""}</button>)}
+  const targets = useRef<number[]>([]);
+  useEffect(() => { if (!composing.current) setDraft(value.join("")); }, [value]);
+  const beginEntry = (input: HTMLInputElement) => { const empty = value.map((character, index) => character ? -1 : index).filter((index) => index >= 0); targets.current = empty.length ? empty : Array.from({ length }, (_, index) => index); setDraft(""); window.requestAnimationFrame(() => input.select()); };
+  const commit = (raw: string) => { const normalized = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, targets.current.length || length).join(""); setDraft(normalized); onCommit(normalized, targets.current.length ? targets.current : Array.from({ length }, (_, index) => index)); };
+  return <div className="word-answer-editor">
+    <label htmlFor={id}>정답 입력</label>
+    <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={`${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
+    <div className="letter-inputs" aria-label={`${length}글자 입력 현황`}>{Array.from({ length }, (_, index) => <button type="button" className={`letter-slot ${index === cursor ? "cursor" : ""}`} key={index} onClick={() => { onCursor(index); inputRef.current?.focus(); }} aria-label={`${index + 1}번째 글자`}>{value[index] ?? ""}</button>)}</div>
   </div>;
 }
 
@@ -80,14 +80,14 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     if (paused) { const now = Date.now(); setStartedAt(now); setPaused(false); persist(entries, usedHintIds, { startedAt: now, accumulatedSeconds, paused: false }); }
     else { setAccumulatedSeconds(elapsed); setStartedAt(null); setPaused(true); persist(entries, usedHintIds, { startedAt: null, accumulatedSeconds: elapsed, paused: true }); }
   };
-  const updateActiveCharacter = (character: string) => {
+  const updateActiveAnswer = (raw: string, targets: number[]) => {
+    const characters = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, active.answer.length);
     const next = { ...entries };
-    next[cellKey(active, cursor)] = character;
+    targets.forEach((target, index) => { const character = characters[index]; if (character) next[cellKey(active, target)] = character; else delete next[cellKey(active, target)]; });
     setEntries(next); persist(next);
-    const nextEmpty = Array.from({ length: active.answer.length - cursor - 1 }, (_, index) => cursor + index + 1).find((index) => !next[cellKey(active, index)]);
-    setCursor(nextEmpty ?? Math.min(active.answer.length - 1, cursor + 1));
+    const nextEmpty = [...active.answer].findIndex((_, index) => !next[cellKey(active, index)]);
+    setCursor(nextEmpty < 0 ? active.answer.length - 1 : nextEmpty);
   };
-  const backspaceActive = () => { const currentKey = cellKey(active, cursor); const target = entries[currentKey] ? cursor : Math.max(0, cursor - 1); const next = { ...entries }; delete next[cellKey(active, target)]; setEntries(next); setCursor(target); persist(next); };
   const activeHints = buildProgressiveHints(active.answer, active.hints, active.hint);
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
   const useHint = () => {
@@ -114,7 +114,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
       <div className="timer-panel elapsed"><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{paused ? "게임 일시정지" : "진행 시간"}</span></div><time dateTime={`PT${elapsed}S`}>{formatClock(elapsed)}</time><button type="button" className="pause-button" onClick={togglePause}>{paused ? "계속하기" : "일시정지"}</button></div><div className="timer-meta"><span>{editionDate} · 퍼즐 {sequenceNumber}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
       {accountName && <nav className="puzzle-picker" aria-label="오늘의 퍼즐 선택"><div><strong>오늘의 도전</strong><span>{completedNumbers.length}/{dailyLimit}개 완료</span></div><div className="puzzle-numbers">{Array.from({ length: dailyLimit }, (_, index) => index + 1).map((number) => <a key={number} href={`/?puzzle=${number}`} className={`${number === sequenceNumber ? "current" : ""} ${completedNumbers.includes(number) ? "completed" : ""}`}>{completedNumbers.includes(number) ? "✓" : number}</a>)}</div></nav>}
       <div className={`game-layout ${paused ? "is-paused" : ""}`}><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const selectedOwnerIndex = owners.findIndex((owner) => owner.id === selected); const word = owners.length > 1 && selectedOwnerIndex >= 0 ? owners[(selectedOwnerIndex + 1) % owners.length] : owners[0]; const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => { setSelected(word.id); setCursor(offset); }}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
-        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={activeCells} length={active.answer.length} cursor={cursor} disabled={Boolean(result) || paused} onCursor={setCursor} onInsert={updateActiveCharacter} onBackspace={backspaceActive} />
+        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={activeCells} length={active.answer.length} cursor={cursor} disabled={Boolean(result) || paused} onCursor={setCursor} onCommit={updateActiveAnswer} />
           <div className="hint-area progressive"><div className="hint-heading"><strong>단계별 힌트</strong><span>{revealedHints.length}/5 · 랭킹 반영</span></div>{revealedHints.map((hint, index) => <p key={index}><strong>{index + 1}단계</strong>{index === 3 ? (active.sources?.length ? active.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.publisher ?? "뉴스 원문"} 기사 전체 보기 ↗</a>) : "연결된 뉴스 원문이 없습니다.") : hint}</p>)}<button type="button" onClick={useHint} disabled={paused || !activeHints.length || revealedHints.length >= activeHints.length || Boolean(result)}>{revealedHints.length ? `${revealedHints.length + 1}단계 힌트 보기` : "1단계 힌트 보기"}</button></div>
           <div className="clue-list">{puzzle.words.map((word, index) => { const count = usedHintIds.filter((id) => id.startsWith(`${word.id}:`)).length; return <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{count > 0 && <small>힌트 {count}단계</small>}</button>; })}</div><button className="submit" type="button" onClick={() => accountName ? setShowSubmit(true) : void submit()} disabled={Boolean(result) || submitting || paused}>{result ? "제출 완료" : submitting ? "채점 중…" : "정답 제출"}</button>{error && <p className="error">{error}</p>}</aside></div>
     </>}

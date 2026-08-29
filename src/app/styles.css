@@ -170,6 +170,10 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 @media (max-width: 560px) { .ranking-title { align-items: start; flex-direction: column; gap: 16px; } .ranking-list li { grid-template-columns: 30px 1fr auto; padding: 16px; } .ranking-list time { grid-column: 2 / 4; text-align: left; font-size: 13px; } }
 
 /* IME-safe crossword input */
+.word-answer-editor { display: grid; gap: 10px; }
+.word-answer-editor > label { color: var(--muted); font-size: 13px; font-weight: 800; }
+.clue-panel .answer-text-input { width: 100%; min-height: 54px; padding: 13px 16px; border: 2px solid #dfe1eb; border-radius: 12px; background: white; color: var(--ink); font-size: 18px; font-weight: 750; caret-color: var(--brand); }
+.clue-panel .answer-text-input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(81,93,241,.1); }
 .clue-panel .letter-inputs .letter-slot { flex: 0 0 clamp(42px, 5vw, 54px); width: clamp(42px, 5vw, 54px); aspect-ratio: 1; padding: 0; border: 2px solid #e4e5ee; border-radius: 10px; background: white; color: var(--ink); text-align: center; font-size: 24px; font-weight: 850; pointer-events: auto; cursor: text; }
 .clue-panel .letter-inputs .letter-slot.cursor { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(81,93,241,.13); }
 .clue-panel .letter-inputs .keyboard-capture { position: fixed; left: 50%; bottom: 1px; width: 2px; height: 2px; opacity: .01; padding: 0; border: 0; pointer-events: none; }
