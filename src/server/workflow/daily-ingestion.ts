@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "@/server/db/client";
 import { articleClusterMembers, articleClusters, articles, newsSources, puzzles, quizCandidates, workflowRuns } from "@/server/db/schema";
 import { clusterArticles, clusterKey } from "@/server/ingestion/cluster";
@@ -77,26 +77,34 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
   const db = getDb();
   const editionDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
   const idempotencyKey = `daily-ingestion:${editionDate}`;
+  const staleBefore = new Date(Date.now() - 30 * 60 * 1000);
+  await db.update(workflowRuns).set({ status: "FAILED", currentStep: "STALE_RECOVERED", finishedAt: new Date() })
+    .where(and(eq(workflowRuns.status, "RUNNING"), lt(workflowRuns.startedAt, staleBefore)));
   const [run] = await db.insert(workflowRuns).values({ idempotencyKey, status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date() })
-    .onConflictDoUpdate({ target: workflowRuns.idempotencyKey, set: { status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date() } }).returning();
+    .onConflictDoUpdate({ target: workflowRuns.idempotencyKey, set: { status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date(), finishedAt: null, details: {} } }).returning();
+  try {
   const sources = await db.select().from(newsSources).where(eq(newsSources.enabled, true));
+  const [{ count: alreadyPublished }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+  if (alreadyPublished >= 30) {
+    const details = { sources: sources.length, discovered: 0, generated: 0, failed: 0 };
+    await db.update(workflowRuns).set({ status: "SUCCEEDED", currentStep: "ALREADY_PUBLISHED", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+    return details;
+  }
   let discovered = 0, failed = 0;
   await Promise.all(sources.map(async (source) => {
     try {
       const result = await fetchFeed(source.feedUrl, { etag: source.etag ?? undefined, lastModified: source.lastModified ?? undefined });
-      for (const article of result.articles) {
-        await db.insert(articles).values({ sourceId: source.id, canonicalUrl: article.url, title: article.title, summary: article.summary, publishedAt: article.publishedAt, fingerprint: articleFingerprint(article.title, article.publishedAt), status: "NORMALIZED" }).onConflictDoNothing({ target: articles.canonicalUrl });
-        discovered++;
-      }
+      if (result.articles.length) await db.insert(articles).values(result.articles.map((article) => ({ sourceId: source.id, canonicalUrl: article.url, title: article.title, summary: article.summary, publishedAt: article.publishedAt, fingerprint: articleFingerprint(article.title, article.publishedAt), status: "NORMALIZED" as const }))).onConflictDoNothing({ target: articles.canonicalUrl });
+      discovered += result.articles.length;
       await db.update(newsSources).set({ etag: result.etag, lastModified: result.lastModified, lastFetchedAt: new Date(), failureCount: 0 }).where(eq(newsSources.id, source.id));
     } catch {
       failed++;
       await db.update(newsSources).set({ failureCount: sql`${newsSources.failureCount} + 1` }).where(eq(newsSources.id, source.id));
     }
   }));
+  await db.update(workflowRuns).set({ currentStep: "BUILD_CANDIDATES", details: { sources: sources.length, discovered, failed } }).where(eq(workflowRuns.id, run.id));
   let generated = 0;
-  const dayStart = new Date(date);
-  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStart = new Date(`${editionDate}T00:00:00+09:00`);
   const pendingBySource = await Promise.all(sources.map((source) => db.select().from(articles)
     .where(and(eq(articles.sourceId, source.id), eq(articles.status, "NORMALIZED"), gte(articles.createdAt, dayStart))).limit(30)));
   const pending = Array.from({ length: 30 }, (_, index) => pendingBySource.map((items) => items[index]).filter(Boolean)).flat();
@@ -116,13 +124,10 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       const key = clusterKey(group);
       const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
         .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: group[0].title } }).returning();
-      for (const item of group) {
-        if (!item.externalId) continue;
-        await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: item.externalId }).onConflictDoNothing();
-      }
-      const result = await generateNewsQuiz(cluster.id, group);
-      for (const candidate of result.data.candidates) {
-        await db.insert(quizCandidates).values({
+      const articleIds = group.flatMap((item) => item.externalId ? [item.externalId] : []);
+      if (articleIds.length) await db.insert(articleClusterMembers).values(articleIds.map((articleId) => ({ clusterId: cluster.id, articleId }))).onConflictDoNothing();
+      const result = await Promise.race([generateNewsQuiz(cluster.id, group), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 25_000))]);
+      if (result.data.candidates.length) await db.insert(quizCandidates).values(result.data.candidates.map((candidate) => ({
           clusterId: cluster.id,
           answer: candidate.answer,
           normalizedAnswer: candidate.normalizedAnswer,
@@ -133,28 +138,24 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
           difficulty: candidate.difficulty,
           confidence: Math.round(candidate.confidence * 100),
           evidence: candidate.evidence,
-          status: candidate.confidence >= 0.9 ? "VALIDATED" : "REVIEW_REQUIRED",
+          status: candidate.confidence >= 0.9 ? "VALIDATED" as const : "REVIEW_REQUIRED" as const,
           promptVersion: NEWS_QUIZ_PROMPT_VERSION,
-        }).onConflictDoNothing();
-        generated++;
-      }
-      for (const item of group) {
-        if (item.externalId) await db.update(articles).set({ status: "CLUSTERED" }).where(eq(articles.id, item.externalId));
-      }
+        }))).onConflictDoNothing();
+      generated += result.data.candidates.length;
+      if (articleIds.length) await db.update(articles).set({ status: "CLUSTERED" }).where(inArray(articles.id, articleIds));
     } catch (error) {
-      failed++;
       console.error("quiz generation failed", error);
       try {
         const key = clusterKey(group);
         const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
           .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: group[0].title } }).returning();
-        for (const item of group) if (item.externalId) await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: item.externalId }).onConflictDoNothing();
-        for (const candidate of fallbackQuizItems(group)) {
-          await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
-          generated++;
-        }
-        for (const item of group) if (item.externalId) await db.update(articles).set({ status: "CLUSTERED" }).where(eq(articles.id, item.externalId));
-      } catch (fallbackError) { console.error("fallback quiz generation failed", fallbackError); }
+        const articleIds = group.flatMap((item) => item.externalId ? [item.externalId] : []);
+        if (articleIds.length) await db.insert(articleClusterMembers).values(articleIds.map((articleId) => ({ clusterId: cluster.id, articleId }))).onConflictDoNothing();
+        const fallbackCandidates = fallbackQuizItems(group);
+        if (fallbackCandidates.length) await db.insert(quizCandidates).values(fallbackCandidates.map((candidate) => ({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED" as const, promptVersion: NEWS_QUIZ_PROMPT_VERSION }))).onConflictDoNothing();
+        generated += fallbackCandidates.length;
+        if (articleIds.length) await db.update(articles).set({ status: "CLUSTERED" }).where(inArray(articles.id, articleIds));
+      } catch (fallbackError) { failed++; console.error("fallback quiz generation failed", fallbackError); }
     }
   }
   const existingDailyCandidates = await db.select().from(quizCandidates)
@@ -163,26 +164,36 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     .limit(300);
   if (existingDailyCandidates.length < 300) {
     let fallbackPoolSize = existingDailyCandidates.length;
+    const fallbackPlans: { article: typeof candidateArticlePool[number]; key: string; candidates: ReturnType<typeof fallbackQuizItems> }[] = [];
+    const fallbackKeys = new Set<string>();
     for (const article of candidateArticlePool) {
       const fallbackCandidates = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
       if (!fallbackCandidates.length) continue;
       const key = clusterKey([{ externalId: article.id, title: article.title, url: article.canonicalUrl, summary: article.summary ?? undefined, publishedAt: article.publishedAt ?? undefined }]);
-      const [cluster] = await db.insert(articleClusters).values({ representativeTitle: article.title, clusterKey: key })
-        .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: article.title } }).returning();
-      await db.insert(articleClusterMembers).values({ clusterId: cluster.id, articleId: article.id }).onConflictDoNothing();
-      for (const candidate of fallbackCandidates) {
-        await db.insert(quizCandidates).values({ clusterId: cluster.id, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED", promptVersion: NEWS_QUIZ_PROMPT_VERSION }).onConflictDoNothing();
-        generated++; fallbackPoolSize++;
-        if (fallbackPoolSize >= 300) break;
-      }
+      if (fallbackKeys.has(key)) continue;
+      fallbackKeys.add(key);
+      const remaining = 300 - fallbackPoolSize;
+      fallbackPlans.push({ article, key, candidates: fallbackCandidates.slice(0, remaining) });
+      fallbackPoolSize += Math.min(fallbackCandidates.length, remaining);
       if (fallbackPoolSize >= 300) break;
     }
+    if (fallbackPlans.length) {
+      const clusterRows = await db.insert(articleClusters).values(fallbackPlans.map((plan) => ({ representativeTitle: plan.article.title, clusterKey: plan.key })))
+        .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: sql`excluded.representative_title` } }).returning({ id: articleClusters.id, clusterKey: articleClusters.clusterKey });
+      const clusterIds = new Map(clusterRows.map((cluster) => [cluster.clusterKey, cluster.id]));
+      await db.insert(articleClusterMembers).values(fallbackPlans.map((plan) => ({ clusterId: clusterIds.get(plan.key)!, articleId: plan.article.id }))).onConflictDoNothing();
+      const candidateValues = fallbackPlans.flatMap((plan) => plan.candidates.map((candidate) => ({ clusterId: clusterIds.get(plan.key)!, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED" as const, promptVersion: NEWS_QUIZ_PROMPT_VERSION })));
+      if (candidateValues.length) await db.insert(quizCandidates).values(candidateValues).onConflictDoNothing();
+      generated += candidateValues.length;
+    }
   }
+  await db.update(workflowRuns).set({ currentStep: "GENERATE_PUZZLES", details: { sources: sources.length, discovered, generated, failed } }).where(eq(workflowRuns.id, run.id));
   const dailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
     .limit(300);
-  if (dailyCandidates.length >= 2) {
+  if (dailyCandidates.length < 24) throw new Error(`Only ${dailyCandidates.length} daily candidates are available`);
+  {
     const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
       .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));
     const sourcesByCluster = new Map<string, { title: string; url: string; publisher?: string }[]>();
@@ -206,9 +217,10 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       }));
     const dailyBoards = buildDistinctDailyBoards(puzzleInputs, 30);
     if (dailyBoards.length < 30) throw new Error(`Only ${dailyBoards.length} distinct daily puzzles could be generated`);
-    for (const [index, board] of dailyBoards.entries()) {
+    const publishedAt = new Date();
+    await db.insert(puzzles).values(dailyBoards.map((board, index) => {
       const sequenceNumber = index + 1;
-      await db.insert(puzzles).values({
+      return {
         editionDate,
         category: `DAILY-${String(sequenceNumber).padStart(2, "0")}`,
         sequenceNumber,
@@ -216,15 +228,19 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
         height: board.height,
         seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:${sequenceNumber}`,
         grid: board,
-        status: "PUBLISHED",
-        publishedAt: new Date(),
-      }).onConflictDoUpdate({
-        target: [puzzles.editionDate, puzzles.sequenceNumber],
-        set: { width: board.width, height: board.height, grid: board, seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:${sequenceNumber}`, status: "PUBLISHED", publishedAt: new Date() },
-      });
-    }
+        status: "PUBLISHED" as const,
+        publishedAt,
+      };
+    })).onConflictDoUpdate({
+      target: [puzzles.editionDate, puzzles.sequenceNumber],
+      set: { width: sql`excluded.width`, height: sql`excluded.height`, grid: sql`excluded.grid`, seed: sql`excluded.seed`, category: sql`excluded.category`, status: "PUBLISHED", publishedAt },
+    });
   }
   const details = { sources: sources.length, discovered, generated, failed };
   await db.update(workflowRuns).set({ status: failed ? "PARTIAL" : "SUCCEEDED", currentStep: "DONE", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
   return details;
+  } catch (error) {
+    await db.update(workflowRuns).set({ status: "FAILED", currentStep: "FAILED", details: { error: error instanceof Error ? error.message : String(error) }, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+    throw error;
+  }
 }
