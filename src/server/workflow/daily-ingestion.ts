@@ -7,7 +7,6 @@ import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
 import { crosswordDiagonalBias, generateBalancedPuzzle, validateCrosswordRules } from "@/server/puzzle/generator";
-import { deduplicatePuzzleInputs } from "@/server/puzzle/deduplicate";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -45,7 +44,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
 }
 
 export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
-  const candidates = deduplicatePuzzleInputs(inputs).slice(0, 180);
+  const candidates = inputs.slice(0, 180);
   const rankedSeeds = [...candidates].sort((a, b) => {
     const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
     return degree(b) - degree(a);
@@ -63,7 +62,7 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): Puz
     }
     shuffled.unshift(seedWord);
     let board: PuzzleBoard;
-    try { board = generateBalancedPuzzle(shuffled, 12); } catch { continue; }
+    try { board = replaceDuplicateWords(generateBalancedPuzzle(shuffled, 12), candidates); } catch { continue; }
     if (!validateCrosswordRules(board)) continue;
     if (crosswordDiagonalBias(board) > 0.42) continue;
     const signature = board.words.map((word) => word.id).sort().join(":");
@@ -74,7 +73,39 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): Puz
   return boards;
 }
 
-export async function runDailyIngestion(date = new Date()): Promise<IngestionSummary> {
+export function replaceDuplicateWords(board: PuzzleBoard, candidates: PuzzleInput[]): PuzzleBoard {
+  const repaired: PuzzleBoard = { ...board, cells: board.cells.map((row) => [...row]), words: board.words.map((word) => ({ ...word })) };
+  const usedAnswers = new Set<string>();
+  const boardIds = new Set(repaired.words.map((word) => word.id));
+  for (let wordIndex = 0; wordIndex < repaired.words.length; wordIndex++) {
+    const word = repaired.words[wordIndex];
+    const duplicated = usedAnswers.has(word.answer);
+    if (!duplicated) { usedAnswers.add(word.answer); continue; }
+    const replacement = candidates.find((candidate) => {
+      const answer = candidate.answer.normalize("NFC").replace(/\s/g, "").toUpperCase();
+      if (boardIds.has(candidate.id) || answer.length !== word.answer.length || usedAnswers.has(answer)) return false;
+      return [...answer].every((character, offset) => {
+        const row = word.row + (word.direction === "DOWN" ? offset : 0);
+        const col = word.col + (word.direction === "ACROSS" ? offset : 0);
+        const shared = repaired.words.some((other, otherIndex) => otherIndex !== wordIndex && [...other.answer].some((_, otherOffset) => other.row + (other.direction === "DOWN" ? otherOffset : 0) === row && other.col + (other.direction === "ACROSS" ? otherOffset : 0) === col));
+        return !shared || repaired.cells[row][col] === character;
+      });
+    });
+    if (!replacement) throw new Error(`No compatible replacement for duplicate answer ${word.answer}`);
+    const answer = replacement.answer.normalize("NFC").replace(/\s/g, "").toUpperCase();
+    for (let offset = 0; offset < answer.length; offset++) {
+      const row = word.row + (word.direction === "DOWN" ? offset : 0);
+      const col = word.col + (word.direction === "ACROSS" ? offset : 0);
+      repaired.cells[row][col] = answer[offset];
+    }
+    boardIds.delete(word.id); boardIds.add(replacement.id);
+    repaired.words[wordIndex] = { ...replacement, answer, row: word.row, col: word.col, direction: word.direction };
+    usedAnswers.add(answer);
+  }
+  return repaired;
+}
+
+export async function runDailyIngestion(date = new Date(), options: { force?: boolean } = {}): Promise<IngestionSummary> {
   const db = getDb();
   const editionDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
   const idempotencyKey = `daily-ingestion:${editionDate}`;
@@ -86,7 +117,7 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
   try {
   const sources = await db.select().from(newsSources).where(eq(newsSources.enabled, true));
   const [{ count: alreadyPublished }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
-  if (alreadyPublished >= 30) {
+  if (alreadyPublished >= 30 && !options.force) {
     const details = { sources: sources.length, discovered: 0, generated: 0, failed: 0 };
     await db.update(workflowRuns).set({ status: "SUCCEEDED", currentStep: "ALREADY_PUBLISHED", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
     return details;

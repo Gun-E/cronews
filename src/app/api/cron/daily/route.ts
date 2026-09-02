@@ -15,7 +15,8 @@ function authorized(request: Request): boolean {
 export async function GET(request: Request) {
   if (!authorized(request)) return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
   try {
-    return Response.json({ ok: true, result: await runDailyIngestion() });
+    const force = new URL(request.url).searchParams.get("force") === "1";
+    return Response.json({ ok: true, result: await runDailyIngestion(new Date(), { force }) });
   } catch (error) {
     console.error("daily ingestion failed", error);
     return Response.json({ ok: false, error: "WORKFLOW_FAILED" }, { status: 500 });

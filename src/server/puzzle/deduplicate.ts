@@ -6,7 +6,7 @@ function normalizedQuestionTokens(question: string): Set<string> {
   return new Set(question.normalize("NFC").toUpperCase().replace(/[○□“”'\"‘’.,!?()[\]]/g, " ").split(/\s+/).filter((token) => token.length > 1 && !QUESTION_STOP_WORDS.has(token)));
 }
 
-function questionsAreSimilar(left: string, right: string): boolean {
+export function questionsAreSimilar(left: string, right: string): boolean {
   const a = normalizedQuestionTokens(left), b = normalizedQuestionTokens(right);
   const intersection = [...a].filter((token) => b.has(token)).length;
   const smaller = Math.min(a.size, b.size);
