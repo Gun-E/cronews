@@ -7,6 +7,7 @@ import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
 import { crosswordDiagonalBias, generateBalancedPuzzle, validateCrosswordRules } from "@/server/puzzle/generator";
+import { deduplicatePuzzleInputs } from "@/server/puzzle/deduplicate";
 import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
@@ -44,7 +45,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
 }
 
 export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
-  const candidates = inputs.slice(0, 180);
+  const candidates = deduplicatePuzzleInputs(inputs).slice(0, 180);
   const rankedSeeds = [...candidates].sort((a, b) => {
     const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
     return degree(b) - degree(a);
@@ -166,10 +167,14 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
     let fallbackPoolSize = existingDailyCandidates.length;
     const fallbackPlans: { article: typeof candidateArticlePool[number]; key: string; candidates: ReturnType<typeof fallbackQuizItems> }[] = [];
     const fallbackKeys = new Set<string>();
-    for (const article of candidateArticlePool) {
-      const fallbackCandidates = fallbackQuizItems([{ title: article.title, url: article.canonicalUrl, externalId: article.id }]);
+    const fallbackGroups = clusterArticles(candidateArticlePool.map((article) => ({ externalId: article.id, title: article.title, url: article.canonicalUrl, summary: article.summary ?? undefined, publishedAt: article.publishedAt ?? undefined })));
+    for (const group of fallbackGroups) {
+      const representative = group[0];
+      const article = candidateArticlePool.find((item) => item.id === representative.externalId);
+      if (!article) continue;
+      const fallbackCandidates = fallbackQuizItems(group).slice(0, 3);
       if (!fallbackCandidates.length) continue;
-      const key = clusterKey([{ externalId: article.id, title: article.title, url: article.canonicalUrl, summary: article.summary ?? undefined, publishedAt: article.publishedAt ?? undefined }]);
+      const key = clusterKey(group);
       if (fallbackKeys.has(key)) continue;
       fallbackKeys.add(key);
       const remaining = 300 - fallbackPoolSize;
@@ -181,7 +186,11 @@ export async function runDailyIngestion(date = new Date()): Promise<IngestionSum
       const clusterRows = await db.insert(articleClusters).values(fallbackPlans.map((plan) => ({ representativeTitle: plan.article.title, clusterKey: plan.key })))
         .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: sql`excluded.representative_title` } }).returning({ id: articleClusters.id, clusterKey: articleClusters.clusterKey });
       const clusterIds = new Map(clusterRows.map((cluster) => [cluster.clusterKey, cluster.id]));
-      await db.insert(articleClusterMembers).values(fallbackPlans.map((plan) => ({ clusterId: clusterIds.get(plan.key)!, articleId: plan.article.id }))).onConflictDoNothing();
+      const fallbackMemberships = fallbackPlans.flatMap((plan) => {
+        const group = fallbackGroups.find((items) => clusterKey(items) === plan.key) ?? [];
+        return group.flatMap((item) => item.externalId ? [{ clusterId: clusterIds.get(plan.key)!, articleId: item.externalId }] : []);
+      });
+      if (fallbackMemberships.length) await db.insert(articleClusterMembers).values(fallbackMemberships).onConflictDoNothing();
       const candidateValues = fallbackPlans.flatMap((plan) => plan.candidates.map((candidate) => ({ clusterId: clusterIds.get(plan.key)!, answer: candidate.answer, normalizedAnswer: candidate.normalizedAnswer, question: candidate.question, hint: candidate.hints[0], hints: candidate.hints, explanation: candidate.explanation, difficulty: "MEDIUM", confidence: 80, evidence: candidate.evidence, status: "VALIDATED" as const, promptVersion: NEWS_QUIZ_PROMPT_VERSION })));
       if (candidateValues.length) await db.insert(quizCandidates).values(candidateValues).onConflictDoNothing();
       generated += candidateValues.length;
