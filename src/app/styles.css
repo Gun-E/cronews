@@ -178,12 +178,13 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .clue-panel .letter-inputs .letter-slot.cursor { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(81,93,241,.13); }
 .clue-panel .letter-inputs .keyboard-capture { position: fixed; left: 50%; bottom: 1px; width: 2px; height: 2px; opacity: .01; padding: 0; border: 0; pointer-events: none; }
 .hint-area.progressive p a { display: block; color: var(--brand); font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
-.timer-panel.elapsed { padding-bottom: 16px; }
-.timer-panel.elapsed .timer-copy { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; }
-.pause-button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border: 1px solid #dfe1f5; border-radius: 9px; background: white; color: var(--muted); font-size: 12px; font-weight: 750; cursor: pointer; transition: border-color .18s, background .18s, color .18s, transform .18s; }
+.timer-panel.elapsed { padding: 17px 20px; }
+.timer-panel.elapsed .timer-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; }
+.timer-panel.elapsed .timer-meta { margin-top: 7px; padding-right: 2px; }
+.pause-button { flex: 0 0 auto; width: 36px; min-width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid #dfe1f5; border-radius: 50%; background: white; color: var(--muted); font-size: 12px; font-weight: 750; cursor: pointer; transition: border-color .18s, background .18s, color .18s, transform .18s; }
 .pause-button:hover { border-color: #b8bdf6; color: var(--brand); transform: translateY(-1px); }
 .pause-button span { width: 12px; color: var(--brand); font-size: 11px; line-height: 1; }
-.pause-button b { font: inherit; }
+.pause-button b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pause-button.is-paused { border-color: var(--brand); background: var(--brand); color: white; box-shadow: 0 5px 14px rgba(81,93,241,.2); }
 .pause-button.is-paused span { color: white; }
 .game-layout.is-paused { position: relative; user-select: none; }
@@ -238,8 +239,7 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 
 @media (max-width: 640px) {
   .timer-panel.elapsed .timer-copy { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
-  .timer-panel.elapsed .pause-button { width: 34px; min-height: 34px; padding: 0; border-radius: 50%; }
-  .timer-panel.elapsed .pause-button b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .timer-panel.elapsed .pause-button { width: 34px; min-width: 34px; height: 34px; }
   .header-actions .profile-trigger b { display: none; }
   .podium { gap: 6px; margin-top: 66px; }
   .podium-rank { min-height: 190px; padding: 54px 8px 15px; border-radius: 16px; }
