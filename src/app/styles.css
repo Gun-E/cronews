@@ -214,6 +214,10 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .social-icon svg { width: 100%; height: 100%; }
 .social.google { border-color: #747775; color: #1f1f1f; }
 .social.kakao { border: 0; border-radius: 12px; background: #fee500; color: rgba(0,0,0,.85); }
+.login-notice-modal { text-align: center; }
+.kakao-notice-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 4px auto 18px; border-radius: 18px; background: #fee500; }
+.kakao-notice-icon svg { width: 30px; height: 30px; }
+.login-notice-modal p { margin-bottom: 24px; word-break: keep-all; }
 .login-policy { display: block; margin-top: 24px; color: #9295a7; text-align: center; font-size: 11px; line-height: 1.5; }
 
 /* Game-style leaderboard */
