@@ -190,6 +190,7 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .pause-button.is-paused span { color: white; }
 .game-layout.is-paused { position: relative; user-select: none; }
 .game-layout.is-paused::after { content: "일시정지됨\A계속하기를 누르면 문제가 다시 보입니다"; white-space: pre; position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; border-radius: 24px; background: rgba(245,246,250,.9); color: var(--brand-dark); text-align: center; font-weight: 850; line-height: 1.7; backdrop-filter: blur(14px); }
+.game-layout.is-paused.auto-paused::after { content: "자동 일시정지됨\A자리를 비운 동안 시간은 흐르지 않았습니다\A계속하기를 눌러 이어서 풀어보세요"; }
 
 /* Account and profile */
 .header-actions { display: flex; align-items: center; gap: 8px !important; }

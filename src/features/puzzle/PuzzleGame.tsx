@@ -33,6 +33,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [accumulatedSeconds, setAccumulatedSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [autoPaused, setAutoPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [showSubmit, setShowSubmit] = useState(false);
   const displayName = accountName ?? "비회원";
@@ -45,10 +46,10 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     const saved = window.localStorage.getItem(storageKey);
     if (!saved) return;
     try {
-      const data = JSON.parse(saved) as { entries?: Record<string, string>; startedAt?: number | null; accumulatedSeconds?: number; paused?: boolean; name?: string; usedHintIds?: string[] };
+      const data = JSON.parse(saved) as { entries?: Record<string, string>; startedAt?: number | null; accumulatedSeconds?: number; paused?: boolean; autoPaused?: boolean; name?: string; usedHintIds?: string[] };
       if (data.entries) setEntries(data.entries);
       if (data.usedHintIds) setUsedHintIds(data.usedHintIds);
-      if (data.startedAt || data.accumulatedSeconds) { const accumulated = data.accumulatedSeconds ?? 0; setStarted(true); setStartedAt(data.startedAt ?? null); setAccumulatedSeconds(accumulated); setPaused(Boolean(data.paused)); setElapsed(accumulated + (data.startedAt ? Math.max(0, Math.floor((Date.now() - data.startedAt) / 1000)) : 0)); }
+      if (data.startedAt || data.accumulatedSeconds) { const accumulated = data.accumulatedSeconds ?? 0; setStarted(true); setStartedAt(data.startedAt ?? null); setAccumulatedSeconds(accumulated); setPaused(Boolean(data.paused)); setAutoPaused(Boolean(data.autoPaused)); setElapsed(accumulated + (data.startedAt ? Math.max(0, Math.floor((Date.now() - data.startedAt) / 1000)) : 0)); }
     } catch { window.localStorage.removeItem(storageKey); }
   }, [accountName, storageKey]);
 
@@ -60,17 +61,35 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     return () => window.clearInterval(timer);
   }, [accumulatedSeconds, paused, result, started, startedAt]);
 
+  useEffect(() => {
+    if (!started || paused || result) return;
+    let lastActivity = Date.now();
+    const markActive = () => { lastActivity = Date.now(); };
+    const pauseForInactivity = () => {
+      const stoppedAt = startedAt ? accumulatedSeconds + Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : accumulatedSeconds;
+      setElapsed(stoppedAt); setAccumulatedSeconds(stoppedAt); setStartedAt(null); setPaused(true); setAutoPaused(true);
+      window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: null, accumulatedSeconds: stoppedAt, paused: true, autoPaused: true, entries, name: displayName, usedHintIds }));
+    };
+    const handleVisibility = () => { if (document.visibilityState === "hidden") pauseForInactivity(); };
+    const idleCheck = window.setInterval(() => { if (Date.now() - lastActivity >= 10 * 60 * 1000) pauseForInactivity(); }, 15_000);
+    window.addEventListener("pointerdown", markActive, { passive: true });
+    window.addEventListener("keydown", markActive);
+    window.addEventListener("touchstart", markActive, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => { window.clearInterval(idleCheck); window.removeEventListener("pointerdown", markActive); window.removeEventListener("keydown", markActive); window.removeEventListener("touchstart", markActive); document.removeEventListener("visibilitychange", handleVisibility); };
+  }, [accumulatedSeconds, displayName, entries, paused, result, started, startedAt, storageKey, usedHintIds]);
+
   useEffect(() => { if (resumeSubmission && accountName) setShowSubmit(true); }, [accountName, resumeSubmission]);
   const active = puzzle.words.find((word) => word.id === selected) ?? puzzle.words[0];
   const cellKey = (word: typeof active, index: number) => `${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`;
   const answers = useMemo(() => Object.fromEntries(puzzle.words.map((word) => [word.id, [...word.answer].map((_, index) => entries[cellKey(word, index)] ?? "").join("")])), [entries, puzzle.words]);
   const activeCells = [...active.answer].map((_, index) => entries[cellKey(active, index)] ?? "");
   const filled = useMemo(() => puzzle.words.filter((word) => [...word.answer].every((_, index) => Boolean(entries[cellKey(word, index)]))).length, [entries, puzzle.words]);
-  const persist = (nextEntries = entries, nextHints = usedHintIds, timer = { startedAt, accumulatedSeconds, paused }) => window.localStorage.setItem(storageKey, JSON.stringify({ ...timer, entries: nextEntries, name: displayName, usedHintIds: nextHints }));
-  const startGame = () => { const now = Date.now(); setStarted(true); setStartedAt(now); setAccumulatedSeconds(0); setPaused(false); setElapsed(0); window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: now, accumulatedSeconds: 0, paused: false, entries: {}, name: displayName, usedHintIds: [] })); };
+  const persist = (nextEntries = entries, nextHints = usedHintIds, timer = { startedAt, accumulatedSeconds, paused }) => window.localStorage.setItem(storageKey, JSON.stringify({ ...timer, autoPaused, entries: nextEntries, name: displayName, usedHintIds: nextHints }));
+  const startGame = () => { const now = Date.now(); setStarted(true); setStartedAt(now); setAccumulatedSeconds(0); setPaused(false); setAutoPaused(false); setElapsed(0); window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: now, accumulatedSeconds: 0, paused: false, autoPaused: false, entries: {}, name: displayName, usedHintIds: [] })); };
   const togglePause = () => {
-    if (paused) { const now = Date.now(); setStartedAt(now); setPaused(false); persist(entries, usedHintIds, { startedAt: now, accumulatedSeconds, paused: false }); }
-    else { setAccumulatedSeconds(elapsed); setStartedAt(null); setPaused(true); persist(entries, usedHintIds, { startedAt: null, accumulatedSeconds: elapsed, paused: true }); }
+    if (paused) { const now = Date.now(); setStartedAt(now); setPaused(false); setAutoPaused(false); window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: now, accumulatedSeconds, paused: false, autoPaused: false, entries, name: displayName, usedHintIds })); }
+    else { setAccumulatedSeconds(elapsed); setStartedAt(null); setPaused(true); setAutoPaused(false); window.localStorage.setItem(storageKey, JSON.stringify({ startedAt: null, accumulatedSeconds: elapsed, paused: true, autoPaused: false, entries, name: displayName, usedHintIds })); }
   };
   const updateActiveAnswer = (raw: string, targets: number[]) => {
     const characters = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, active.answer.length);
@@ -104,7 +123,7 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     {!started ? <section className="start-gate"><span className="eyebrow">{editionDate} · 퍼즐 {sequenceNumber}</span><div className="start-lock" aria-hidden="true">?</div><h1>문제는 시작 후 공개됩니다</h1><p>시간 제한은 없습니다. 시작하면 시간이 누적되며 언제든 일시정지하고 돌아올 수 있습니다. 힌트 사용 단계는 랭킹에 반영됩니다.</p><button type="button" className="submit" onClick={startGame}>게임 시작</button></section> : <>
       <div className="timer-panel elapsed"><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{paused ? "게임 일시정지" : "진행 시간"}</span></div><time dateTime={`PT${elapsed}S`}>{formatClock(elapsed)}</time><button type="button" className={`pause-button ${paused ? "is-paused" : ""}`} onClick={togglePause} aria-label={paused ? "게임 계속하기" : "게임 일시정지"} title={paused ? "게임 계속하기" : "게임 일시정지"}><span aria-hidden="true">{paused ? "▶" : "Ⅱ"}</span><b>{paused ? "계속" : "일시정지"}</b></button></div><div className="timer-meta"><span>{editionDate} · 퍼즐 {sequenceNumber}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
       {accountName && <nav className="puzzle-picker" aria-label="오늘의 퍼즐 선택"><div><strong>오늘의 도전</strong><span>{completedNumbers.length}/{dailyLimit}개 완료</span></div><div className="puzzle-numbers">{Array.from({ length: dailyLimit }, (_, index) => index + 1).map((number) => <a key={number} href={`/?puzzle=${number}`} className={`${number === sequenceNumber ? "current" : ""} ${completedNumbers.includes(number) ? "completed" : ""}`}>{completedNumbers.includes(number) ? "✓" : number}</a>)}</div></nav>}
-      <div className={`game-layout ${paused ? "is-paused" : ""}`}><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const selectedOwnerIndex = owners.findIndex((owner) => owner.id === selected); const word = owners.length > 1 && selectedOwnerIndex >= 0 ? owners[(selectedOwnerIndex + 1) % owners.length] : owners[0]; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => setSelected(word.id)}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
+      <div className={`game-layout ${paused ? "is-paused" : ""} ${autoPaused ? "auto-paused" : ""}`}><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const selectedOwnerIndex = owners.findIndex((owner) => owner.id === selected); const word = owners.length > 1 && selectedOwnerIndex >= 0 ? owners[(selectedOwnerIndex + 1) % owners.length] : owners[0]; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => setSelected(word.id)}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
         <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={activeCells} length={active.answer.length} disabled={Boolean(result) || paused} onCommit={updateActiveAnswer} />
           <div className="hint-area progressive"><div className="hint-heading"><strong>단계별 힌트</strong><span>{revealedHints.length}/5 · 랭킹 반영</span></div>{revealedHints.map((hint, index) => <p key={index}><strong>{index + 1}단계</strong>{index === 3 ? (active.sources?.length ? active.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.publisher ?? "뉴스 원문"} 기사 전체 보기 ↗</a>) : "연결된 뉴스 원문이 없습니다.") : hint}</p>)}<button type="button" onClick={useHint} disabled={paused || !activeHints.length || revealedHints.length >= activeHints.length || Boolean(result)}>{revealedHints.length ? `${revealedHints.length + 1}단계 힌트 보기` : "1단계 힌트 보기"}</button></div>
           <div className="clue-list">{puzzle.words.map((word, index) => { const count = usedHintIds.filter((id) => id.startsWith(`${word.id}:`)).length; return <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{count > 0 && <small>힌트 {count}단계</small>}</button>; })}</div><button className="submit" type="button" onClick={() => accountName ? setShowSubmit(true) : void submit()} disabled={Boolean(result) || submitting || paused}>{result ? "제출 완료" : submitting ? "채점 중…" : "정답 제출"}</button>{error && <p className="error">{error}</p>}</aside></div>
