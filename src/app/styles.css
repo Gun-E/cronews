@@ -171,6 +171,7 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 
 /* IME-safe crossword input */
 .word-answer-editor { display: grid; gap: 10px; }
+.word-answer-editor .letter-inputs { margin-bottom: 4px; }
 .word-answer-editor > label { color: var(--muted); font-size: 13px; font-weight: 800; }
 .clue-panel .answer-text-input { width: 100%; min-height: 54px; padding: 13px 16px; border: 2px solid #dfe1eb; border-radius: 12px; background: white; color: var(--ink); font-size: 18px; font-weight: 750; caret-color: var(--brand); }
 .clue-panel .answer-text-input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(81,93,241,.1); }

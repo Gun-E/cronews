@@ -19,8 +19,8 @@ function WordKeyboardInput({ id, value, length, disabled, onCommit }: { id: stri
   const remaining = value.filter((character) => !character).length;
   return <div className="word-answer-editor">
     <label htmlFor={id}>정답 입력</label>
-    <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={remaining && remaining < length ? `교차 글자를 제외한 ${remaining}글자를 입력하세요` : `${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
     <div className="letter-inputs" aria-label={`${length}글자 입력 현황`}>{Array.from({ length }, (_, index) => <span className="letter-slot" key={index} aria-hidden="true">{value[index] ?? ""}</span>)}</div>
+    <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={remaining && remaining < length ? `교차 글자를 제외한 ${remaining}글자를 입력하세요` : `${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
   </div>;
 }
 
