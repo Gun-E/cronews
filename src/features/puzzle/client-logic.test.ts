@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProgressiveHints, normalizeCellValue } from "./client-logic";
+import { buildProgressiveHints, normalizeCellValue, resolveEntryPositions } from "./client-logic";
 
 describe("puzzle client logic", () => {
   it("keeps one completed Korean syllable", () => {
@@ -9,6 +9,11 @@ describe("puzzle client logic", () => {
 
   it("uses the last character for a single cell", () => {
     expect(normalizeCellValue("ABC")).toBe("C");
+  });
+
+  it("aligns a full answer while allowing entry into only empty crossing cells", () => {
+    expect(resolveEntryPositions(6, 6, [0, 1, 3, 4, 5])).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(resolveEntryPositions(5, 6, [0, 1, 3, 4, 5])).toEqual([0, 1, 3, 4, 5]);
   });
 
   it("always exposes the complete answer at hint level five", () => {

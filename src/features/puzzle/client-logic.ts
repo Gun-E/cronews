@@ -2,6 +2,10 @@ export function normalizeCellValue(value: string): string {
   return [...value.normalize("NFC")].at(-1) ?? "";
 }
 
+export function resolveEntryPositions(characterCount: number, answerLength: number, emptyTargets: number[]): number[] {
+  return characterCount === answerLength ? Array.from({ length: answerLength }, (_, index) => index) : emptyTargets;
+}
+
 export function buildProgressiveHints(answer: string, hints?: string[], legacyHint?: string): string[] {
   const source = hints?.length ? hints : legacyHint ? [legacyHint] : [];
   const description = source.find((hint) => !/첫 글자|초성|정답은|출처|기사/.test(hint)) ?? legacyHint ?? "뉴스 속 핵심 인물·기관·사건을 설명하는 단어입니다.";

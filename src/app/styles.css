@@ -201,6 +201,10 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .profile-modal label small { position: absolute; right: 8px; bottom: 7px; color: var(--muted); font-size: 10px; }
 .profile-preview { display: grid; place-items: center; width: 82px; height: 82px; margin: 20px auto; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, var(--brand), #8990ff); color: white; font-size: 30px; font-weight: 900; box-shadow: 0 12px 30px rgba(81,93,241,.22); }
 .profile-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-file-input { position: absolute; width: 1px !important; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.avatar-upload-button { display: block; margin: -8px auto 0; padding: 9px 14px; border: 1px solid #dfe1f5; border-radius: 10px; background: white; color: var(--brand); font-weight: 800; cursor: pointer; }
+.avatar-upload-button:disabled { opacity: .55; cursor: default; }
+.profile-modal .avatar-help { margin: 8px 0 20px; color: var(--muted); text-align: center; font-size: 11px; }
 
 /* Official social-login visual treatment */
 .social { min-height: 52px; display: grid; place-items: center; }
@@ -218,7 +222,9 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .ranking-tabs a { padding: 13px; border-radius: 11px; color: var(--muted); text-align: center; text-decoration: none; font-weight: 850; }
 .ranking-tabs a.active { background: white; color: var(--brand); box-shadow: 0 5px 16px rgba(30,32,74,.1); }
 .podium { display: grid; grid-template-columns: 1fr 1.12fr 1fr; align-items: end; gap: 14px; margin: 72px 0 28px; }
-.podium-rank { position: relative; display: grid; justify-items: center; gap: 7px; min-height: 220px; padding: 62px 16px 22px; border: 1px solid rgba(81,93,241,.12); border-radius: 22px; background: linear-gradient(180deg, white, #f1f2ff); text-align: center; box-shadow: 0 20px 55px rgba(43,47,108,.1); }
+.podium-rank { position: relative; display: grid; width: 100%; justify-items: center; gap: 7px; min-height: 220px; padding: 62px 16px 22px; border: 1px solid rgba(81,93,241,.12); border-radius: 22px; background: linear-gradient(180deg, white, #f1f2ff); color: var(--ink); font: inherit; text-align: center; box-shadow: 0 20px 55px rgba(43,47,108,.1); }
+.podium-rank.profile-openable { cursor: pointer; transition: transform .18s, box-shadow .18s; }
+.podium-rank.profile-openable:hover { transform: translateY(-3px); box-shadow: 0 25px 62px rgba(43,47,108,.15); }
 .podium-rank.rank-1 { min-height: 260px; padding-top: 70px; background: linear-gradient(160deg, #fff9da, #fff, #ebe8ff); border-color: #f2d979; }
 .podium-rank:only-child { grid-column: 2; }
 .crown { position: absolute; top: -36px; color: #aab0c8; font-size: 38px; }
@@ -232,10 +238,19 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .podium-rank > b { color: var(--brand); font-size: 24px; }
 .podium-rank > small { color: var(--muted); line-height: 1.45; }
 .game-ranking li { grid-template-columns: 44px minmax(160px,1fr) auto minmax(210px,auto); }
-.rank-player { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rank-player { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.rank-player:disabled { cursor: default; }
 .rank-player > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
 .mini-avatar { flex: 0 0 auto; width: 36px; height: 36px; font-size: 12px; }
 .game-ranking li > b { color: var(--brand); }
+.public-profile-modal { text-align: center; }
+.public-profile-avatar { display: grid; place-items: center; width: 104px; height: 104px; margin: 24px auto 14px; overflow: hidden; border: 5px solid white; border-radius: 50%; background: linear-gradient(135deg, var(--brand), #8990ff); color: white; font-size: 34px; font-weight: 900; box-shadow: 0 14px 36px rgba(81,93,241,.25); }
+.public-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.public-profile-modal h2 { margin-bottom: 6px; }
+.public-profile-modal > p { min-height: 25px; margin: 0 auto 24px; }
+.public-profile-record { display: grid; gap: 6px; padding: 16px; border-radius: 14px; background: #f3f4ff; text-align: left; }
+.public-profile-record span { color: var(--muted); font-size: 12px; }
+.public-profile-record strong { color: var(--brand-dark); font-size: 15px; }
 
 @media (max-width: 640px) {
   .timer-panel.elapsed .timer-copy { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }

@@ -3,22 +3,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PuzzleBoard } from "@/server/puzzle/types";
 import { ProfileMenu } from "@/features/profile/ProfileMenu";
-import { buildProgressiveHints } from "./client-logic";
+import { buildProgressiveHints, resolveEntryPositions } from "./client-logic";
 
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
 const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 function WordKeyboardInput({ id, value, length, cursor, disabled, onCursor, onCommit }: { id: string; value: string[]; length: number; cursor: number; disabled: boolean; onCursor: (index: number) => void; onCommit: (value: string, targets: number[]) => void }) {
-  const [draft, setDraft] = useState(value.join(""));
+  const [draft, setDraft] = useState("");
   const composing = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const targets = useRef<number[]>([]);
-  useEffect(() => { if (!composing.current) setDraft(value.join("")); }, [value]);
+  useEffect(() => { setDraft(""); targets.current = []; }, [id]);
   const beginEntry = (input: HTMLInputElement) => { const empty = value.map((character, index) => character ? -1 : index).filter((index) => index >= 0); targets.current = empty.length ? empty : Array.from({ length }, (_, index) => index); setDraft(""); window.requestAnimationFrame(() => input.select()); };
-  const commit = (raw: string) => { const normalized = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, targets.current.length || length).join(""); setDraft(normalized); onCommit(normalized, targets.current.length ? targets.current : Array.from({ length }, (_, index) => index)); };
+  const commit = (raw: string) => { const normalized = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, length).join(""); setDraft(normalized); onCommit(normalized, targets.current.length ? targets.current : Array.from({ length }, (_, index) => index)); };
+  const remaining = value.filter((character) => !character).length;
   return <div className="word-answer-editor">
     <label htmlFor={id}>정답 입력</label>
-    <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={`${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
+    <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={remaining && remaining < length ? `교차 글자를 제외한 ${remaining}글자를 입력하세요` : `${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
     <div className="letter-inputs" aria-label={`${length}글자 입력 현황`}>{Array.from({ length }, (_, index) => <button type="button" className={`letter-slot ${index === cursor ? "cursor" : ""}`} key={index} onClick={() => { onCursor(index); inputRef.current?.focus(); }} aria-label={`${index + 1}번째 글자`}>{value[index] ?? ""}</button>)}</div>
   </div>;
 }
@@ -83,7 +84,8 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
   const updateActiveAnswer = (raw: string, targets: number[]) => {
     const characters = [...raw.normalize("NFC").replace(/\s/g, "").toUpperCase()].slice(0, active.answer.length);
     const next = { ...entries };
-    targets.forEach((target, index) => { const character = characters[index]; if (character) next[cellKey(active, target)] = character; else delete next[cellKey(active, target)]; });
+    const positions = resolveEntryPositions(characters.length, active.answer.length, targets);
+    positions.forEach((target, index) => { const character = characters[index]; if (character) next[cellKey(active, target)] = character; else delete next[cellKey(active, target)]; });
     setEntries(next); persist(next);
     const nextEmpty = [...active.answer].findIndex((_, index) => !next[cellKey(active, index)]);
     setCursor(nextEmpty < 0 ? active.answer.length - 1 : nextEmpty);
