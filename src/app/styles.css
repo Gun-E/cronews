@@ -150,7 +150,8 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
 .ranking-shell { width: min(820px, 100%); margin: auto; }
 .ranking-shell > header { display: flex; gap: 14px; align-items: center; margin-bottom: 48px; }
 .ranking-shell > header a { display: inline-flex; text-decoration: none; }
-.ranking-shell > header img { display: block; width: 154px; height: auto; }
+.ranking-shell > header > a > img { display: block; width: 154px; height: auto; }
+.ranking-shell > header .profile-trigger img { width: 28px; height: 28px; object-fit: cover; }
 .ranking-shell > header span { color: var(--muted); }
 .ranking-shell > header form { margin-left: auto; }
 .ranking-title { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
