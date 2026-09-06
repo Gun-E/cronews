@@ -151,14 +151,14 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     publishedAt: article.publishedAt ?? undefined,
   }))).sort((a, b) => b.length - a.length).slice(0, 2);
 
-  for (const group of groups) {
+  await Promise.all(groups.map(async (group) => {
     try {
       const key = clusterKey(group);
       const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
         .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: group[0].title } }).returning();
       const articleIds = group.flatMap((item) => item.externalId ? [item.externalId] : []);
       if (articleIds.length) await db.insert(articleClusterMembers).values(articleIds.map((articleId) => ({ clusterId: cluster.id, articleId }))).onConflictDoNothing();
-      const result = await Promise.race([generateNewsQuiz(cluster.id, group), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 25_000))]);
+      const result = await Promise.race([generateNewsQuiz(cluster.id, group), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 12_000))]);
       if (result.data.candidates.length) await db.insert(quizCandidates).values(result.data.candidates.map((candidate) => ({
           clusterId: cluster.id,
           answer: candidate.answer,
@@ -189,7 +189,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
         if (articleIds.length) await db.update(articles).set({ status: "CLUSTERED" }).where(inArray(articles.id, articleIds));
       } catch (fallbackError) { failed++; console.error("fallback quiz generation failed", fallbackError); }
     }
-  }
+  }));
   const existingDailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
