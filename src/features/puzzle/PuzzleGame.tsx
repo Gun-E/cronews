@@ -8,7 +8,7 @@ import { buildProgressiveHints, resolveEntryPositions } from "./client-logic";
 type Result = { correctCount: number; totalCount: number; elapsedSeconds: number; hintCount: number; rank: number; participants: number; playerType: "GUEST" | "USER" };
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
 const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-function WordKeyboardInput({ id, value, length, cursor, disabled, onCursor, onCommit }: { id: string; value: string[]; length: number; cursor: number; disabled: boolean; onCursor: (index: number) => void; onCommit: (value: string, targets: number[]) => void }) {
+function WordKeyboardInput({ id, value, length, disabled, onCommit }: { id: string; value: string[]; length: number; disabled: boolean; onCommit: (value: string, targets: number[]) => void }) {
   const [draft, setDraft] = useState("");
   const composing = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -20,7 +20,7 @@ function WordKeyboardInput({ id, value, length, cursor, disabled, onCursor, onCo
   return <div className="word-answer-editor">
     <label htmlFor={id}>정답 입력</label>
     <input ref={inputRef} id={id} className="answer-text-input" value={draft} maxLength={length} disabled={disabled} autoComplete="off" autoCapitalize="characters" inputMode="text" placeholder={remaining && remaining < length ? `교차 글자를 제외한 ${remaining}글자를 입력하세요` : `${length}글자 정답을 입력하세요`} aria-label="정답 입력" onFocus={(event) => beginEntry(event.currentTarget)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; commit(event.currentTarget.value); }} onChange={(event) => { setDraft(event.currentTarget.value); if (!composing.current) commit(event.currentTarget.value); }} />
-    <div className="letter-inputs" aria-label={`${length}글자 입력 현황`}>{Array.from({ length }, (_, index) => <button type="button" className={`letter-slot ${index === cursor ? "cursor" : ""}`} key={index} onClick={() => { onCursor(index); inputRef.current?.focus(); }} aria-label={`${index + 1}번째 글자`}>{value[index] ?? ""}</button>)}</div>
+    <div className="letter-inputs" aria-label={`${length}글자 입력 현황`}>{Array.from({ length }, (_, index) => <span className="letter-slot" key={index} aria-hidden="true">{value[index] ?? ""}</span>)}</div>
   </div>;
 }
 
@@ -34,7 +34,6 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
   const [accumulatedSeconds, setAccumulatedSeconds] = useState(0);
   const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [cursor, setCursor] = useState(0);
   const [showSubmit, setShowSubmit] = useState(false);
   const displayName = accountName ?? "비회원";
   const [result, setResult] = useState<Result | null>(null);
@@ -62,14 +61,6 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
   }, [accumulatedSeconds, paused, result, started, startedAt]);
 
   useEffect(() => { if (resumeSubmission && accountName) setShowSubmit(true); }, [accountName, resumeSubmission]);
-  useEffect(() => {
-    const word = puzzle.words.find((item) => item.id === selected) ?? puzzle.words[0];
-    const firstEmpty = [...word.answer].findIndex((_, index) => !entries[`${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`]);
-    setCursor(firstEmpty < 0 ? 0 : firstEmpty);
-    // Selection changes intentionally choose the first unfilled cell; entry changes advance explicitly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, puzzle.words]);
-
   const active = puzzle.words.find((word) => word.id === selected) ?? puzzle.words[0];
   const cellKey = (word: typeof active, index: number) => `${word.row + (word.direction === "DOWN" ? index : 0)}:${word.col + (word.direction === "ACROSS" ? index : 0)}`;
   const answers = useMemo(() => Object.fromEntries(puzzle.words.map((word) => [word.id, [...word.answer].map((_, index) => entries[cellKey(word, index)] ?? "").join("")])), [entries, puzzle.words]);
@@ -87,8 +78,6 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     const positions = resolveEntryPositions(characters.length, active.answer.length, targets);
     positions.forEach((target, index) => { const character = characters[index]; if (character) next[cellKey(active, target)] = character; else delete next[cellKey(active, target)]; });
     setEntries(next); persist(next);
-    const nextEmpty = [...active.answer].findIndex((_, index) => !next[cellKey(active, index)]);
-    setCursor(nextEmpty < 0 ? active.answer.length - 1 : nextEmpty);
   };
   const activeHints = buildProgressiveHints(active.answer, active.hints, active.hint);
   const revealedHints = activeHints.filter((_, index) => usedHintIds.includes(`${active.id}:${index + 1}`));
@@ -115,8 +104,8 @@ export function PuzzleGame({ puzzle, puzzleId, editionDate, accountName, account
     {!started ? <section className="start-gate"><span className="eyebrow">{editionDate} · 퍼즐 {sequenceNumber}</span><div className="start-lock" aria-hidden="true">?</div><h1>문제는 시작 후 공개됩니다</h1><p>시간 제한은 없습니다. 시작하면 시간이 누적되며 언제든 일시정지하고 돌아올 수 있습니다. 힌트 사용 단계는 랭킹에 반영됩니다.</p><button type="button" className="submit" onClick={startGame}>게임 시작</button></section> : <>
       <div className="timer-panel elapsed"><div className="timer-copy"><div><span className="timer-icon" aria-hidden="true">◷</span><span>{paused ? "게임 일시정지" : "진행 시간"}</span></div><time dateTime={`PT${elapsed}S`}>{formatClock(elapsed)}</time><button type="button" className={`pause-button ${paused ? "is-paused" : ""}`} onClick={togglePause} aria-label={paused ? "게임 계속하기" : "게임 일시정지"} title={paused ? "게임 계속하기" : "게임 일시정지"}><span aria-hidden="true">{paused ? "▶" : "Ⅱ"}</span><b>{paused ? "계속" : "일시정지"}</b></button></div><div className="timer-meta"><span>{editionDate} · 퍼즐 {sequenceNumber}</span><strong>{filled}/{puzzle.words.length} 문제 입력 완료</strong></div></div>
       {accountName && <nav className="puzzle-picker" aria-label="오늘의 퍼즐 선택"><div><strong>오늘의 도전</strong><span>{completedNumbers.length}/{dailyLimit}개 완료</span></div><div className="puzzle-numbers">{Array.from({ length: dailyLimit }, (_, index) => index + 1).map((number) => <a key={number} href={`/?puzzle=${number}`} className={`${number === sequenceNumber ? "current" : ""} ${completedNumbers.includes(number) ? "completed" : ""}`}>{completedNumbers.includes(number) ? "✓" : number}</a>)}</div></nav>}
-      <div className={`game-layout ${paused ? "is-paused" : ""}`}><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const selectedOwnerIndex = owners.findIndex((owner) => owner.id === selected); const word = owners.length > 1 && selectedOwnerIndex >= 0 ? owners[(selectedOwnerIndex + 1) % owners.length] : owners[0]; const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => { setSelected(word.id); setCursor(offset); }}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
-        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={activeCells} length={active.answer.length} cursor={cursor} disabled={Boolean(result) || paused} onCursor={setCursor} onCommit={updateActiveAnswer} />
+      <div className={`game-layout ${paused ? "is-paused" : ""}`}><div className="board" style={{ gridTemplateColumns: `repeat(${puzzle.width}, minmax(0, 1fr))` }}>{puzzle.cells.flatMap((row, rowIndex) => row.map((cell, colIndex) => { if (!cell) return <span className="cell blocked" key={`${rowIndex}-${colIndex}`} />; const owners = puzzle.words.filter((word) => { const offset = word.direction === "ACROSS" ? colIndex - word.col : rowIndex - word.row; return offset >= 0 && offset < word.answer.length && (word.direction === "ACROSS" ? rowIndex === word.row : colIndex === word.col); }); const selectedOwnerIndex = owners.findIndex((owner) => owner.id === selected); const word = owners.length > 1 && selectedOwnerIndex >= 0 ? owners[(selectedOwnerIndex + 1) % owners.length] : owners[0]; return <button type="button" className={`cell ${owners.some((owner) => owner.id === selected) ? "active" : ""}`} key={`${rowIndex}-${colIndex}`} onClick={() => setSelected(word.id)}>{entries[`${rowIndex}:${colIndex}`] ?? ""}</button>; }))}</div>
+        <aside className="clue-panel"><span className="clue-number">문제 {puzzle.words.findIndex((word) => word.id === active.id) + 1} / {puzzle.words.length}</span><h2>{active.question}</h2><WordKeyboardInput id={`answer-${active.id}`} value={activeCells} length={active.answer.length} disabled={Boolean(result) || paused} onCommit={updateActiveAnswer} />
           <div className="hint-area progressive"><div className="hint-heading"><strong>단계별 힌트</strong><span>{revealedHints.length}/5 · 랭킹 반영</span></div>{revealedHints.map((hint, index) => <p key={index}><strong>{index + 1}단계</strong>{index === 3 ? (active.sources?.length ? active.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.publisher ?? "뉴스 원문"} 기사 전체 보기 ↗</a>) : "연결된 뉴스 원문이 없습니다.") : hint}</p>)}<button type="button" onClick={useHint} disabled={paused || !activeHints.length || revealedHints.length >= activeHints.length || Boolean(result)}>{revealedHints.length ? `${revealedHints.length + 1}단계 힌트 보기` : "1단계 힌트 보기"}</button></div>
           <div className="clue-list">{puzzle.words.map((word, index) => { const count = usedHintIds.filter((id) => id.startsWith(`${word.id}:`)).length; return <button type="button" className={word.id === active.id ? "selected" : ""} onClick={() => setSelected(word.id)} key={word.id}><span>{index + 1}</span>{word.question}{count > 0 && <small>힌트 {count}단계</small>}</button>; })}</div><button className="submit" type="button" onClick={() => accountName ? setShowSubmit(true) : void submit()} disabled={Boolean(result) || submitting || paused}>{result ? "제출 완료" : submitting ? "채점 중…" : "정답 제출"}</button>{error && <p className="error">{error}</p>}</aside></div>
     </>}
