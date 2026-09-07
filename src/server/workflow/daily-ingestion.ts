@@ -158,7 +158,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
         .onConflictDoUpdate({ target: articleClusters.clusterKey, set: { representativeTitle: group[0].title } }).returning();
       const articleIds = group.flatMap((item) => item.externalId ? [item.externalId] : []);
       if (articleIds.length) await db.insert(articleClusterMembers).values(articleIds.map((articleId) => ({ clusterId: cluster.id, articleId }))).onConflictDoNothing();
-      const result = await Promise.race([generateNewsQuiz(cluster.id, group), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 12_000))]);
+      const result = await Promise.race([generateNewsQuiz(cluster.id, group), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("LLM_TIMEOUT")), 5_000))]);
       if (result.data.candidates.length) await db.insert(quizCandidates).values(result.data.candidates.map((candidate) => ({
           clusterId: cluster.id,
           answer: candidate.answer,
