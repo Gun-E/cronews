@@ -43,15 +43,17 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
   }).slice(0, 15);
 }
 
-export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30): PuzzleBoard[] {
+export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30, options: { existingSignatures?: Iterable<string>; attemptOffset?: number } = {}): PuzzleBoard[] {
   const candidates = inputs.slice(0, 180);
   const rankedSeeds = [...candidates].sort((a, b) => {
     const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
     return degree(b) - degree(a);
   });
   const boards: PuzzleBoard[] = [];
-  const signatures = new Set<string>();
-  for (let attempt = 0; attempt < 300 && boards.length < limit; attempt++) {
+  const signatures = new Set(options.existingSignatures ?? []);
+  const attemptOffset = options.attemptOffset ?? 0;
+  for (let localAttempt = 0; localAttempt < 300 && boards.length < limit; localAttempt++) {
+    const attempt = localAttempt + attemptOffset;
     const seedWord = rankedSeeds[attempt % Math.min(80, rankedSeeds.length)];
     const shuffled = candidates.filter((word) => word.id !== seedWord.id);
     let seed = ((attempt + 1) * 2654435761) >>> 0;
@@ -151,7 +153,9 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     publishedAt: article.publishedAt ?? undefined,
   }))).sort((a, b) => b.length - a.length).slice(0, 2);
 
-  await Promise.all(groups.map(async (group) => {
+  const [{ count: candidatesBeforeLlm }] = await db.select({ count: sql<number>`count(*)::int` }).from(quizCandidates)
+    .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)));
+  if (candidatesBeforeLlm < 300) await Promise.all(groups.map(async (group) => {
     try {
       const key = clusterKey(group);
       const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
@@ -255,11 +259,15 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
         explanation: candidate.explanation,
         sources: sourcesByCluster.get(candidate.clusterId) ?? [],
       }));
-    const dailyBoards = buildDistinctDailyBoards(puzzleInputs, 30);
-    if (dailyBoards.length < 30) throw new Error(`Only ${dailyBoards.length} distinct daily puzzles could be generated`);
+    const publishedRows = options.force ? [] : await db.select({ sequenceNumber: puzzles.sequenceNumber, grid: puzzles.grid }).from(puzzles)
+      .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED"))).orderBy(puzzles.sequenceNumber);
+    const existingSignatures = publishedRows.map((row) => ((row.grid as PuzzleBoard).words ?? []).map((word) => word.id).sort().join(":"));
+    const batchSize = Math.min(10, 30 - publishedRows.length);
+    const dailyBoards = buildDistinctDailyBoards(puzzleInputs, batchSize, { existingSignatures, attemptOffset: publishedRows.length * 10 });
+    if (!dailyBoards.length && publishedRows.length < 30) throw new Error("No additional daily puzzles could be generated");
     const publishedAt = new Date();
     await db.insert(puzzles).values(dailyBoards.map((board, index) => {
-      const sequenceNumber = index + 1;
+      const sequenceNumber = publishedRows.length + index + 1;
       return {
         editionDate,
         category: `DAILY-${String(sequenceNumber).padStart(2, "0")}`,
@@ -277,7 +285,8 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     });
   }
   const details = { sources: sources.length, discovered, generated, failed };
-  await db.update(workflowRuns).set({ status: failed ? "PARTIAL" : "SUCCEEDED", currentStep: "DONE", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+  const [{ count: publishedTotal }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+  await db.update(workflowRuns).set({ status: publishedTotal >= 30 && !failed ? "SUCCEEDED" : "PARTIAL", currentStep: publishedTotal >= 30 ? "DONE" : `PUZZLES_${publishedTotal}_OF_30`, details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
   return details;
   } catch (error) {
     await db.update(workflowRuns).set({ status: "FAILED", currentStep: "FAILED", details: { error: error instanceof Error ? error.message : String(error) }, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
