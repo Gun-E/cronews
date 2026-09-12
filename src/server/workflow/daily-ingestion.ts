@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, notLike, sql } from "drizzle-orm";
 import { getDb } from "@/server/db/client";
 import { articleClusterMembers, articleClusters, articles, newsSources, puzzles, quizCandidates, workflowRuns } from "@/server/db/schema";
 import { clusterArticles, clusterKey } from "@/server/ingestion/cluster";
@@ -116,9 +116,40 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     .where(and(eq(workflowRuns.status, "RUNNING"), lt(workflowRuns.startedAt, staleBefore)));
   const [run] = await db.insert(workflowRuns).values({ idempotencyKey, status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date() })
     .onConflictDoUpdate({ target: workflowRuns.idempotencyKey, set: { status: "RUNNING", currentStep: "FETCH_FEEDS", startedAt: new Date(), finishedAt: null, details: {} } }).returning();
+  let fallbackPublished = false;
   try {
   const sources = await db.select().from(newsSources).where(eq(newsSources.enabled, true));
-  const [{ count: alreadyPublished }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+  const currentRows = await db.select().from(puzzles)
+    .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")))
+    .orderBy(puzzles.sequenceNumber);
+  if (!currentRows.length && !options.force) {
+    const [latest] = await db.select({ editionDate: puzzles.editionDate }).from(puzzles)
+      .where(and(eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%"), lt(puzzles.editionDate, editionDate)))
+      .groupBy(puzzles.editionDate)
+      .having(sql`count(*) >= 30`)
+      .orderBy(desc(puzzles.editionDate)).limit(1);
+    if (latest) {
+      const previousRows = await db.select().from(puzzles)
+        .where(and(eq(puzzles.editionDate, latest.editionDate), eq(puzzles.status, "PUBLISHED")))
+        .orderBy(puzzles.sequenceNumber).limit(30);
+      if (previousRows.length) {
+        await db.insert(puzzles).values(previousRows.map((row) => ({
+          editionDate,
+          category: `FALLBACK-${String(row.sequenceNumber).padStart(2, "0")}`,
+          sequenceNumber: row.sequenceNumber,
+          width: row.width,
+          height: row.height,
+          seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:fallback:${row.sequenceNumber}`,
+          grid: row.grid,
+          status: "PUBLISHED" as const,
+          publishedAt: new Date(),
+        }))).onConflictDoNothing({ target: [puzzles.editionDate, puzzles.sequenceNumber] });
+        fallbackPublished = true;
+      }
+    }
+  }
+  const freshRowsAtStart = currentRows.filter((row) => !row.category.startsWith("FALLBACK-"));
+  const alreadyPublished = freshRowsAtStart.length;
   if (alreadyPublished >= 30 && !options.force) {
     const details = { sources: sources.length, discovered: 0, generated: 0, failed: 0 };
     await db.update(workflowRuns).set({ status: "SUCCEEDED", currentStep: "ALREADY_PUBLISHED", details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
@@ -234,10 +265,18 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     }
   }
   await db.update(workflowRuns).set({ currentStep: "GENERATE_PUZZLES", details: { sources: sources.length, discovered, generated, failed } }).where(eq(workflowRuns.id, run.id));
-  const dailyCandidates = await db.select().from(quizCandidates)
+  let dailyCandidates = await db.select().from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
     .limit(300);
+  if (dailyCandidates.length < 300) {
+    const recentCandidates = await db.select().from(quizCandidates)
+      .where(eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION))
+      .orderBy(desc(quizCandidates.createdAt), sql`${quizCandidates.confidence} desc`)
+      .limit(300);
+    const seen = new Set(dailyCandidates.map((candidate) => candidate.id));
+    dailyCandidates = [...dailyCandidates, ...recentCandidates.filter((candidate) => !seen.has(candidate.id))].slice(0, 300);
+  }
   if (dailyCandidates.length < 24) throw new Error(`Only ${dailyCandidates.length} daily candidates are available`);
   {
     const dailyClusterIds = [...new Set(dailyCandidates.map((candidate) => candidate.clusterId))];
@@ -265,7 +304,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
         sources: sourcesByCluster.get(candidate.clusterId) ?? [],
       }));
     const publishedRows = options.force ? [] : await db.select({ sequenceNumber: puzzles.sequenceNumber, grid: puzzles.grid }).from(puzzles)
-      .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED"))).orderBy(puzzles.sequenceNumber);
+      .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%"))).orderBy(puzzles.sequenceNumber);
     const existingSignatures = publishedRows.map((row) => ((row.grid as PuzzleBoard).words ?? []).map((word) => word.id).sort().join(":"));
     const batchSize = Math.min(10, 30 - publishedRows.length);
     const dailyBoards = buildDistinctDailyBoards(puzzleInputs, batchSize, { existingSignatures, attemptOffset: publishedRows.length * 10 });
@@ -290,11 +329,13 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     });
   }
   const details = { sources: sources.length, discovered, generated, failed };
-  const [{ count: publishedTotal }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+  const [{ count: publishedTotal }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles).where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%")));
   await db.update(workflowRuns).set({ status: publishedTotal >= 30 && !failed ? "SUCCEEDED" : "PARTIAL", currentStep: publishedTotal >= 30 ? "DONE" : `PUZZLES_${publishedTotal}_OF_30`, details, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
   return details;
   } catch (error) {
-    await db.update(workflowRuns).set({ status: "FAILED", currentStep: "FAILED", details: { error: error instanceof Error ? error.message : String(error) }, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+    const [{ count: usableTotal }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles)
+      .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+    await db.update(workflowRuns).set({ status: usableTotal > 0 ? "PARTIAL" : "FAILED", currentStep: usableTotal > 0 ? "FALLBACK_PUBLISHED" : "FAILED", details: { error: error instanceof Error ? error.message : String(error), usableTotal, fallbackPublished }, finishedAt: new Date() }).where(eq(workflowRuns.id, run.id));
     throw error;
   }
 }
