@@ -155,7 +155,9 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
 
   const [{ count: candidatesBeforeLlm }] = await db.select({ count: sql<number>`count(*)::int` }).from(quizCandidates)
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)));
-  if (candidatesBeforeLlm < 300) await Promise.all(groups.map(async (group) => {
+  // Recovery invocations must spend their time publishing the remaining boards.
+  // Candidate enrichment is useful only before the first board has been checkpointed.
+  if (alreadyPublished === 0 && candidatesBeforeLlm < 300) await Promise.all(groups.map(async (group) => {
     try {
       const key = clusterKey(group);
       const [cluster] = await db.insert(articleClusters).values({ representativeTitle: group[0].title, clusterKey: key })
@@ -238,8 +240,11 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     .limit(300);
   if (dailyCandidates.length < 24) throw new Error(`Only ${dailyCandidates.length} daily candidates are available`);
   {
+    const dailyClusterIds = [...new Set(dailyCandidates.map((candidate) => candidate.clusterId))];
     const memberships = await db.select({ clusterId: articleClusterMembers.clusterId, title: articles.title, url: articles.canonicalUrl })
-      .from(articleClusterMembers).innerJoin(articles, eq(articleClusterMembers.articleId, articles.id));
+      .from(articleClusterMembers)
+      .innerJoin(articles, eq(articleClusterMembers.articleId, articles.id))
+      .where(inArray(articleClusterMembers.clusterId, dailyClusterIds));
     const sourcesByCluster = new Map<string, { title: string; url: string; publisher?: string }[]>();
     for (const item of memberships) {
       const current = sourcesByCluster.get(item.clusterId) ?? [];
