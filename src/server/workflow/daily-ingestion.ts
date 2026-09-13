@@ -12,6 +12,37 @@ import type { PuzzleBoard, PuzzleInput } from "@/server/puzzle/types";
 export interface IngestionSummary { sources: number; discovered: number; generated: number; failed: number; }
 
 const FALLBACK_STOP_WORDS = new Set(["관련", "대한", "위한", "오늘", "정부", "한국", "발표", "기자", "뉴스", "단독", "종합", "논란"]);
+const editionDateFor = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+
+export async function prepareDailyFallback(date = new Date()): Promise<number> {
+  const db = getDb();
+  const editionDate = editionDateFor(date);
+  const [{ count: currentCount }] = await db.select({ count: sql<number>`count(*)::int` }).from(puzzles)
+    .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")));
+  if (currentCount > 0) return currentCount;
+  const [latest] = await db.select({ editionDate: puzzles.editionDate }).from(puzzles)
+    .where(and(eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%"), lt(puzzles.editionDate, editionDate)))
+    .groupBy(puzzles.editionDate)
+    .having(sql`count(*) >= 30`)
+    .orderBy(desc(puzzles.editionDate)).limit(1);
+  if (!latest) return 0;
+  const previousRows = await db.select().from(puzzles)
+    .where(and(eq(puzzles.editionDate, latest.editionDate), eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%")))
+    .orderBy(puzzles.sequenceNumber).limit(30);
+  if (previousRows.length < 30) return 0;
+  await db.insert(puzzles).values(previousRows.map((row) => ({
+    editionDate,
+    category: `FALLBACK-${String(row.sequenceNumber).padStart(2, "0")}`,
+    sequenceNumber: row.sequenceNumber,
+    width: row.width,
+    height: row.height,
+    seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:fallback:${row.sequenceNumber}`,
+    grid: row.grid,
+    status: "PUBLISHED" as const,
+    publishedAt: new Date(),
+  }))).onConflictDoNothing({ target: [puzzles.editionDate, puzzles.sequenceNumber] });
+  return previousRows.length;
+}
 
 function fallbackQuizItems(group: { title: string; url: string; externalId?: string }[]) {
   const seen = new Set<string>();
@@ -43,7 +74,7 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
   }).slice(0, 15);
 }
 
-export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30, options: { existingSignatures?: Iterable<string>; attemptOffset?: number } = {}): PuzzleBoard[] {
+export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30, options: { existingSignatures?: Iterable<string>; attemptOffset?: number; maxAttempts?: number } = {}): PuzzleBoard[] {
   const candidates = inputs.slice(0, 180);
   const rankedSeeds = [...candidates].sort((a, b) => {
     const degree = (word: PuzzleInput) => candidates.reduce((count, other) => count + (other.id !== word.id && [...word.answer].some((character) => other.answer.includes(character)) ? 1 : 0), 0);
@@ -52,7 +83,8 @@ export function buildDistinctDailyBoards(inputs: PuzzleInput[], limit = 30, opti
   const boards: PuzzleBoard[] = [];
   const signatures = new Set(options.existingSignatures ?? []);
   const attemptOffset = options.attemptOffset ?? 0;
-  for (let localAttempt = 0; localAttempt < 300 && boards.length < limit; localAttempt++) {
+  const maxAttempts = options.maxAttempts ?? 80;
+  for (let localAttempt = 0; localAttempt < maxAttempts && boards.length < limit; localAttempt++) {
     const attempt = localAttempt + attemptOffset;
     const seedWord = rankedSeeds[attempt % Math.min(80, rankedSeeds.length)];
     const shuffled = candidates.filter((word) => word.id !== seedWord.id);
@@ -109,7 +141,7 @@ export function replaceDuplicateWords(board: PuzzleBoard, candidates: PuzzleInpu
 
 export async function runDailyIngestion(date = new Date(), options: { force?: boolean } = {}): Promise<IngestionSummary> {
   const db = getDb();
-  const editionDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+  const editionDate = editionDateFor(date);
   const idempotencyKey = `daily-ingestion:${editionDate}`;
   const staleBefore = new Date(Date.now() - 30 * 60 * 1000);
   await db.update(workflowRuns).set({ status: "FAILED", currentStep: "STALE_RECOVERED", finishedAt: new Date() })
@@ -123,30 +155,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED")))
     .orderBy(puzzles.sequenceNumber);
   if (!currentRows.length && !options.force) {
-    const [latest] = await db.select({ editionDate: puzzles.editionDate }).from(puzzles)
-      .where(and(eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%"), lt(puzzles.editionDate, editionDate)))
-      .groupBy(puzzles.editionDate)
-      .having(sql`count(*) >= 30`)
-      .orderBy(desc(puzzles.editionDate)).limit(1);
-    if (latest) {
-      const previousRows = await db.select().from(puzzles)
-        .where(and(eq(puzzles.editionDate, latest.editionDate), eq(puzzles.status, "PUBLISHED")))
-        .orderBy(puzzles.sequenceNumber).limit(30);
-      if (previousRows.length) {
-        await db.insert(puzzles).values(previousRows.map((row) => ({
-          editionDate,
-          category: `FALLBACK-${String(row.sequenceNumber).padStart(2, "0")}`,
-          sequenceNumber: row.sequenceNumber,
-          width: row.width,
-          height: row.height,
-          seed: `${editionDate}:${NEWS_QUIZ_PROMPT_VERSION}:fallback:${row.sequenceNumber}`,
-          grid: row.grid,
-          status: "PUBLISHED" as const,
-          publishedAt: new Date(),
-        }))).onConflictDoNothing({ target: [puzzles.editionDate, puzzles.sequenceNumber] });
-        fallbackPublished = true;
-      }
-    }
+    fallbackPublished = (await prepareDailyFallback(date)) > 0;
   }
   const freshRowsAtStart = currentRows.filter((row) => !row.category.startsWith("FALLBACK-"));
   const alreadyPublished = freshRowsAtStart.length;
@@ -231,7 +240,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
     .where(and(gte(quizCandidates.createdAt, dayStart), eq(quizCandidates.promptVersion, NEWS_QUIZ_PROMPT_VERSION)))
     .orderBy(sql`${quizCandidates.confidence} desc`)
     .limit(300);
-  if (existingDailyCandidates.length < 300) {
+  if (alreadyPublished === 0 && existingDailyCandidates.length < 300) {
     let fallbackPoolSize = existingDailyCandidates.length;
     const fallbackPlans: { article: typeof candidateArticlePool[number]; key: string; candidates: ReturnType<typeof fallbackQuizItems> }[] = [];
     const fallbackKeys = new Set<string>();
@@ -307,7 +316,12 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
       .where(and(eq(puzzles.editionDate, editionDate), eq(puzzles.status, "PUBLISHED"), notLike(puzzles.category, "FALLBACK-%"))).orderBy(puzzles.sequenceNumber);
     const existingSignatures = publishedRows.map((row) => ((row.grid as PuzzleBoard).words ?? []).map((word) => word.id).sort().join(":"));
     const batchSize = Math.min(10, 30 - publishedRows.length);
-    const dailyBoards = buildDistinctDailyBoards(puzzleInputs, batchSize, { existingSignatures, attemptOffset: publishedRows.length * 10 });
+    const retryWindow = Math.floor(Date.now() / 3_600_000);
+    const dailyBoards = buildDistinctDailyBoards(puzzleInputs, batchSize, {
+      existingSignatures,
+      attemptOffset: publishedRows.length * 10 + retryWindow * 97,
+      maxAttempts: 80,
+    });
     if (!dailyBoards.length && publishedRows.length < 30) throw new Error("No additional daily puzzles could be generated");
     const publishedAt = new Date();
     await db.insert(puzzles).values(dailyBoards.map((board, index) => {

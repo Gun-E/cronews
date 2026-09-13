@@ -4,7 +4,7 @@ import { runDailyIngestion } from "@/server/workflow/daily-ingestion";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-function authorized(request: Request): boolean {
+export function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization");
   if (!secret || !auth?.startsWith("Bearer ")) return false;
