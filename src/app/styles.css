@@ -458,6 +458,34 @@ body { background: var(--paper); font-size: var(--text-body); line-height: var(-
 .account-menu .account-menu-panel form { margin: 0; }
 .account-menu .account-menu-panel button { color: var(--ink); font-weight: 600; }
 .account-menu .account-menu-panel button:hover, .account-menu .account-menu-panel button:focus-visible { color: var(--brand-dark); background: #f0f0ff; }
+
+.ranking-preview-label { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--brand-dark); }
+.ranking-leaders { display: grid; grid-template-columns: 1.16fr 1fr 1fr; gap: 12px; }
+.leader-card { display: grid; justify-items: start; gap: 9px; min-width: 0; padding: clamp(14px, 2.2vw, 22px); border: 1px solid var(--line); border-radius: 14px; background: white; color: var(--ink); text-align: left; }
+.leader-card:first-child { border-color: #dedfff; background: #eeefff; }
+button.leader-card { cursor: pointer; }
+button.leader-card:hover { border-color: var(--brand); }
+.leader-place { color: var(--brand-dark); font-size: 13px; font-weight: 800; }
+.leader-card .mini-avatar { width: 44px; height: 44px; font-size: 17px; }
+.leader-card strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; line-height: 1.3; font-size: 17px; }
+.leader-card small, .rank-player small { margin-inline-start: 6px; color: var(--brand-dark); font-size: 11px; }
+.leader-detail { color: var(--muted); font-size: 13px; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ranking-results { margin-top: 24px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.ranking-results-heading, .ranking-records li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px clamp(10px, 2vw, 20px); }
+.ranking-results-heading { color: var(--muted); font-size: 13px; font-weight: 700; }
+.ranking-records { margin: 0; padding: 0; list-style: none; }
+.ranking-records li { border-top: 1px solid var(--line); }
+.ranking-records li.mine { background: #f5f5ff; }
+.ranking-records .rank-player { min-height: 44px; }
+.record-position { color: var(--muted); font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.ranking-records .leader-detail { text-align: right; }
+@media (max-width: 600px) {
+  .ranking-leaders { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .leader-card:first-child { grid-column: 1 / -1; }
+  .ranking-results-heading, .ranking-records li { grid-template-columns: 30px minmax(0, 1fr); gap: 2px 8px; }
+  .ranking-results-heading > :last-child { display: none; }
+  .ranking-records .leader-detail { grid-column: 2; text-align: left; padding-bottom: 3px; }
+}
 .timer-panel.elapsed {
   display: flex;
   flex-wrap: wrap;
