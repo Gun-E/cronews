@@ -449,13 +449,15 @@ body { background: var(--paper); font-size: var(--text-body); line-height: var(-
 .account-menu { position: relative; }
 .account-menu summary { list-style: none; padding: 4px 10px 4px 5px; }
 .account-menu summary::-webkit-details-marker { display: none; }
-.account-menu[open] summary { background: var(--brand-soft); }
+.account-menu[open] summary { background: #f0f0ff; border-color: #dedff5; }
 .account-menu summary:focus-visible { outline: 2px solid var(--brand-dark); outline-offset: 3px; }
-.account-menu summary i { width: 7px; height: 7px; margin: -3px 3px 0; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
-.account-menu-panel { position: absolute; z-index: 12; top: calc(100% + 8px); right: 0; width: 164px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 8px 24px rgb(23 25 45 / 12%); }
+.account-menu summary i { width: 6px; height: 6px; margin: -3px 3px 0; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.account-menu[open] summary i { margin-top: 3px; transform: rotate(225deg); }
+.account-menu-panel { position: absolute; z-index: 12; top: calc(100% + 6px); right: 0; width: 152px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 4px 14px rgb(23 25 45 / 9%); }
 .account-menu-panel button { width: 100%; min-height: 40px; border-radius: 6px; text-align: left; }
-.account-menu-panel form { margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--line); }
-.account-menu-panel form button { color: #a32f41; }
+.account-menu .account-menu-panel form { margin: 0; }
+.account-menu .account-menu-panel button { color: var(--ink); font-weight: 600; }
+.account-menu .account-menu-panel button:hover, .account-menu .account-menu-panel button:focus-visible { color: var(--brand-dark); background: #f0f0ff; }
 .timer-panel.elapsed {
   display: flex;
   flex-wrap: wrap;
