@@ -5,6 +5,7 @@ import { getDb } from "@/server/db/client";
 import { puzzles, puzzleSubmissions, userProfiles } from "@/server/db/schema";
 import type { PuzzleBoard } from "@/server/puzzle/types";
 import { createSupabaseServerClient } from "@/server/auth/supabase";
+import { availablePuzzleHints } from "@/features/puzzle/client-logic";
 
 const submissionSchema = z.object({
   answers: z.record(z.string(), z.string().max(20)),
@@ -35,7 +36,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const board = puzzle.grid as PuzzleBoard;
   const normalized = Object.fromEntries(Object.entries(parsed.data.answers).map(([key, value]) => [key, value.normalize("NFC").replace(/\s/g, "").toUpperCase()]));
   const correctCount = board.words.filter((word) => normalized[word.id] === word.answer).length;
-  const validHintIds = new Set(board.words.flatMap((word) => Array.from({ length: 5 }, (_, index) => `${word.id}:${index + 1}`)));
+  const validHintIds = new Set(board.words.flatMap((word) => availablePuzzleHints(word).map(({ id }) => id)));
   const usedHintIds = [...new Set(parsed.data.usedHintIds)].filter((hintId) => validHintIds.has(hintId));
   const values = {
     puzzleId: puzzle.id,

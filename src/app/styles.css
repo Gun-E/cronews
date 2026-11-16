@@ -272,3 +272,295 @@ main { min-height: 100vh; padding: clamp(18px, 4vw, 52px); }
   .game-ranking time { grid-column: 2 / 4; }
   .clue-panel .letter-inputs .letter-slot { flex-basis: clamp(40px, 12vw, 50px); width: clamp(40px, 12vw, 50px); }
 }
+
+/* Keep the board and selected clue prominent across screen sizes. */
+:root {
+  --page-gutter: clamp(16px, 4vw, 48px);
+  --section-gap: clamp(20px, 3vw, 32px);
+  --control-radius: 10px;
+  --text-display: clamp(28px, 4vw, 42px);
+  --text-heading: clamp(22px, 2.6vw, 28px);
+  --text-body: 16px;
+  --text-control: 14px;
+  --text-meta: 13px;
+  --leading-heading: 1.28;
+  --leading-body: 1.6;
+  --tracking-heading: -.025em;
+}
+main { padding-inline: var(--page-gutter); }
+.game-header, .ranking-shell > header {
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: var(--section-gap);
+}
+.header-actions { flex-direction: row; flex-wrap: wrap; }
+.timer-panel.elapsed, .puzzle-picker {
+  margin-bottom: var(--section-gap);
+  padding: 12px 0;
+  border: 0;
+  border-block: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.game-layout { gap: var(--section-gap); }
+.clue-panel { min-width: 0; padding: clamp(18px, 3vw, 32px); border-radius: 16px; box-shadow: none; }
+.clue-panel h2 { min-height: 0; margin: 8px 0 20px; }
+.hint-area.progressive {
+  margin-top: 24px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.hint-area.progressive p, .news-sources a {
+  padding-inline: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.clue-list { margin: 20px 0; padding-block: 8px; border-block: 1px solid var(--line); }
+.rank-hero { padding: 16px 0; border-block: 1px solid var(--line); border-radius: 0; }
+.rank-hero span, .rank-hero small { color: var(--muted); }
+.rank-hero strong { color: var(--brand-dark); }
+.score-grid.compact div, .signed-player, .public-profile-record {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.login-card, .start-gate { border: 1px solid var(--line); border-radius: 16px; box-shadow: none; }
+.login-card .brand { margin-bottom: var(--section-gap); }
+.ranking-title { gap: 16px; }
+.ranking-tabs { margin-block: var(--section-gap); padding: 0; gap: 16px; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.ranking-tabs a { border-radius: 0; border-bottom: 2px solid transparent; }
+.ranking-tabs a.active { border-color: var(--brand-dark); background: transparent; box-shadow: none; }
+.ranking-list { gap: 0; }
+.ranking-list li { border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.result-card { max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 560px) {
+  .result-card { max-height: 92dvh; }
+}
+body { background: var(--paper); font-size: var(--text-body); line-height: var(--leading-body); }
+.start-gate h1, .ranking-title h1, .login-card h1, .unavailable-page h1 {
+  font-size: var(--text-display);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
+  font-weight: 800;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.clue-panel h2, .result-card h2 {
+  font-size: var(--text-heading);
+  line-height: 1.4;
+  letter-spacing: var(--tracking-heading);
+  font-weight: 750;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.start-gate p, .login-card p, .ranking-title p, .result-card p {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.timer-meta, .clue-number, .word-answer-editor > label, .hint-heading span,
+.score-grid span, .rank-hero small, .login-policy, .profile-modal .avatar-help {
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  letter-spacing: normal;
+}
+.submit, .next-puzzle, .hint-area.progressive > button, .social,
+.ranking-tabs a, .clue-list button, .account-menu-panel button, .profile-trigger b {
+  font-size: var(--text-control);
+  line-height: 1.4;
+  letter-spacing: normal;
+  font-weight: 700;
+}
+.rank-hero strong, .timer-copy time, .score-grid strong,
+.puzzle-numbers a, .ranking-list time, .podium-rank > b {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+}
+.submit, .start-lock { background: var(--brand-dark); box-shadow: none; }
+.rank-hero { background: transparent; }
+.board { box-shadow: none; border-radius: 14px; }
+.cell { color: var(--ink); border-radius: 4px; }
+.cell.active { background: var(--brand); color: white; box-shadow: inset 0 0 0 1px white; }
+.cell:not(.active):not(.blocked):hover { background: var(--brand-soft); }
+.cell:focus-visible { outline-offset: -3px; }
+.submit, .next-puzzle, .hint-area.progressive > button, .social { min-height: 48px; border-radius: var(--control-radius); }
+.submit:not(:disabled):hover { box-shadow: none; transform: none; }
+.header-actions a, .ranking-account .login-pill, .profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: var(--control-radius);
+  font-size: 14px;
+}
+.header-actions .login-primary:hover { color: white; }
+.pause-button, .timer-panel.elapsed .pause-button, .close {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--control-radius);
+}
+.pause-button span { width: auto; font-size: 16px; }
+.pause-button.is-paused { box-shadow: none; }
+.close { font-size: 24px; line-height: 1; }
+.timer-icon { width: 20px; height: 20px; background: transparent; color: var(--muted); }
+.social { padding-inline: 42px; }
+.social-icon { width: 18px; height: 18px; }
+.kakao-notice-icon { width: 44px; height: 44px; border-radius: var(--control-radius); }
+.kakao-notice-icon svg { width: 22px; height: 22px; }
+.game-header { align-items: center; }
+.game-header > .header-brand, .ranking-shell > header > .header-brand {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 2vw, 16px);
+}
+.header-brand .cronews-logo img { width: clamp(112px, 16vw, 154px); }
+.game-header .header-brand > span, .ranking-shell > header .header-brand > span {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.header-actions .profile-trigger, .ranking-account .profile-trigger { padding: 4px 8px; }
+.profile-trigger img, .profile-trigger span { width: 26px; height: 26px; background: var(--brand-dark); }
+.account-menu { position: relative; }
+.account-menu summary { list-style: none; padding: 4px 10px 4px 5px; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-menu[open] summary { background: var(--brand-soft); }
+.account-menu summary:focus-visible { outline: 2px solid var(--brand-dark); outline-offset: 3px; }
+.account-menu summary i { width: 7px; height: 7px; margin: -3px 3px 0; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.account-menu-panel { position: absolute; z-index: 12; top: calc(100% + 8px); right: 0; width: 164px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 8px 24px rgb(23 25 45 / 12%); }
+.account-menu-panel button { width: 100%; min-height: 40px; border-radius: 6px; text-align: left; }
+.account-menu-panel form { margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--line); }
+.account-menu-panel form button { color: #a32f41; }
+.timer-panel.elapsed {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px clamp(12px, 2vw, 20px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+}
+.timer-edition, .timer-reading { display: grid; gap: 3px; }
+.timer-edition strong { font-size: 15px; line-height: 1.25; }
+.timer-edition span, .timer-reading span { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.timer-controls { display: flex; align-items: center; gap: 12px; margin-inline-start: auto; }
+.timer-reading { text-align: right; }
+.timer-controls time { color: var(--brand-dark); font-size: 20px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.timer-panel.elapsed .pause-button { display: inline-flex; gap: 7px; justify-content: center; border: 1px solid var(--line); background: white; color: var(--brand-dark); font-size: 13px; }
+.timer-panel.elapsed .pause-button .timer-action-icon { color: inherit; }
+.timer-panel.elapsed .pause-button.is-paused { border-color: transparent; background: var(--brand-soft); }
+.timer-panel.elapsed .pause-button:not(:disabled):hover { border-color: var(--brand); transform: none; }
+.timer-panel.elapsed .pause-button:disabled { opacity: .45; cursor: default; }
+.timer-panel.elapsed .timer-action-icon { width: 10px; height: 12px; border-inline: 3px solid currentColor; }
+.timer-panel.elapsed .is-paused .timer-action-icon {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border: 6px solid transparent;
+  border-left: 9px solid currentColor;
+  border-right: 0;
+}
+.hint-area.progressive > button, .next-puzzle { border: 1px solid var(--line); color: var(--brand-dark); }
+.puzzle-picker { padding-block: 0 14px; border-top: 0; }
+.puzzle-picker > div:first-child span { color: var(--muted); }
+.puzzle-numbers { gap: 6px; }
+.puzzle-numbers a {
+  position: relative;
+  min-width: 0;
+  min-height: 36px;
+  aspect-ratio: auto;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+.puzzle-numbers a:hover { transform: none; }
+.puzzle-numbers a.current:hover { color: white; }
+.puzzle-complete-mark { position: absolute; inset: 2px 4px auto auto; font-size: 9px; line-height: 1; }
+.game-layout.is-paused::after, .game-layout.is-paused.auto-paused::after {
+  content: "일시정지 중";
+  border-radius: 14px;
+}
+@media (max-width: 760px) {
+  .puzzle-numbers { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .puzzle-numbers a { min-height: 44px; }
+}
+.podium-rank { min-width: 0; background: white; box-shadow: none; }
+.podium-rank.rank-1 { background: #fff8df; }
+.word-answer-editor .letter-inputs { flex-wrap: nowrap; gap: clamp(3px, 1vw, 8px); cursor: default; }
+.clue-panel .letter-inputs .letter-slot {
+  flex: 0 1 54px;
+  width: 54px;
+  min-width: 0;
+  font-size: clamp(14px, 4vw, 24px);
+}
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--brand-dark);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Shared control sizing. Crossword cells keep the geometry of the board. */
+:root { --control-height: 44px; --control-padding: 14px; }
+.submit, .next-puzzle, .social.google, .social.kakao,
+.hint-area.progressive > button, .header-actions > a,
+.ranking-account .login-pill, .account-menu summary.profile-trigger,
+.account-menu-panel button, .avatar-upload-button, .puzzle-numbers a {
+  min-height: var(--control-height);
+  padding-block: 0;
+  padding-inline: var(--control-padding);
+  border-radius: var(--control-radius);
+  font-size: var(--text-control);
+  line-height: 1.4;
+}
+.account-menu-panel button, .submit, .next-puzzle,
+.hint-area.progressive > button, .avatar-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-menu-panel button { justify-content: flex-start; }
+.avatar-upload-button { display: flex; width: fit-content; }
+.social.google, .social.kakao { padding-inline: 42px; }
+.account-menu summary.profile-trigger { padding-inline: 6px 10px; }
+.puzzle-numbers a { padding-inline: 0; }
+.timer-panel.elapsed .pause-button, .result-card .close {
+  inline-size: var(--control-height);
+  block-size: var(--control-height);
+  min-inline-size: var(--control-height);
+}
+
+/* Shared pointer feedback for controls, independent of their base color. */
+:is(.submit, .next-puzzle, .social, .pause-button, .close, .avatar-upload-button,
+    .header-actions > a, .ranking-account .login-pill, .account-menu summary,
+    .account-menu-panel button, .hint-area.progressive > button, .puzzle-numbers a) {
+  transition: filter .15s ease;
+}
+@media (hover: hover) {
+  :is(.submit, .next-puzzle, .social, .pause-button, .close, .avatar-upload-button,
+      .header-actions > a, .ranking-account .login-pill, .account-menu summary,
+      .account-menu-panel button, .hint-area.progressive > button, .puzzle-numbers a):not(:disabled):hover {
+    filter: brightness(.96);
+    transform: none;
+  }
+}
+:is(.submit, .next-puzzle, .social, .pause-button, .close, .avatar-upload-button,
+    .header-actions > a, .ranking-account .login-pill, .account-menu summary,
+    .account-menu-panel button, .hint-area.progressive > button, .puzzle-numbers a):not(:disabled):active {
+  filter: brightness(.92);
+}

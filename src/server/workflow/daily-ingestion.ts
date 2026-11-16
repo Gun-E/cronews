@@ -3,6 +3,7 @@ import { getDb } from "@/server/db/client";
 import { articleClusterMembers, articleClusters, articles, newsSources, puzzles, quizCandidates, workflowRuns } from "@/server/db/schema";
 import { clusterArticles, clusterKey } from "@/server/ingestion/cluster";
 import { fetchFeed } from "@/server/ingestion/feed";
+import { addDictionaryHints } from "@/server/ingestion/korean-dictionary";
 import { articleFingerprint } from "@/server/ingestion/normalize";
 import { generateNewsQuiz } from "@/server/llm/generate-news-quiz";
 import { NEWS_QUIZ_PROMPT_VERSION } from "@/server/llm/news-prompt";
@@ -44,7 +45,7 @@ export async function prepareDailyFallback(date = new Date()): Promise<number> {
   return previousRows.length;
 }
 
-function fallbackQuizItems(group: { title: string; url: string; externalId?: string }[]) {
+function fallbackQuizItems(group: { title: string; summary?: string; url: string; externalId?: string }[]) {
   const seen = new Set<string>();
   return group.flatMap((article) => {
     let publisher = "뉴스 원문";
@@ -56,12 +57,16 @@ function fallbackQuizItems(group: { title: string; url: string; externalId?: str
     return answers.map((answer) => {
       seen.add(answer);
       const masked = article.title.replace(answer, "○".repeat([...answer].length));
+      const context = article.summary?.split(/(?<=[.!?。])\s+/u)
+        .map((sentence) => sentence.trim())
+        .find((sentence) => sentence.length >= 20 && sentence.length <= 180 && sentence.includes(answer) && !sentence.includes(article.title))
+        ?.replaceAll(answer, "해당 표현");
       return {
       answer,
       normalizedAnswer: answer.normalize("NFC").replace(/\s/g, "").toUpperCase(),
       question: `“${masked}” 기사 제목의 빈칸에 들어갈 핵심어는 무엇일까요?`,
       hints: [
-        `“${masked}”라는 뉴스 맥락에서 핵심 대상이 되는 표현입니다.`,
+        context ?? "",
         `첫 글자는 ‘${[...answer][0]}’입니다.`,
         "초성은 다음 단계에서 앱이 자동으로 제공합니다.",
         `${publisher} 뉴스 원문 보기`,
@@ -323,6 +328,7 @@ export async function runDailyIngestion(date = new Date(), options: { force?: bo
       maxAttempts: 80,
     });
     if (!dailyBoards.length && publishedRows.length < 30) throw new Error("No additional daily puzzles could be generated");
+    await addDictionaryHints(dailyBoards);
     const publishedAt = new Date();
     await db.insert(puzzles).values(dailyBoards.map((board, index) => {
       const sequenceNumber = publishedRows.length + index + 1;

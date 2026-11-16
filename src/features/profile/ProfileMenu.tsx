@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 async function compressAvatar(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/") || file.size > 8_000_000) throw new Error("8MB 이하의 이미지 파일을 선택해 주세요.");
@@ -21,7 +21,17 @@ export function ProfileMenu({ nickname, bio = "", avatarUrl }: { nickname: strin
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  const triggerRef = useRef<HTMLElement>(null);
   const initial = [...name][0]?.toUpperCase() ?? "C";
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      const menu = menuRef.current;
+      if (menu?.open && !menu.contains(event.target as Node)) menu.open = false;
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, []);
   const save = async () => {
     setSaving(true); setMessage("");
     const response = await fetch("/api/profile", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ nickname: name, bio: intro, avatarUrl: avatar }) });
@@ -43,7 +53,24 @@ export function ProfileMenu({ nickname, bio = "", avatarUrl }: { nickname: strin
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   };
   return <>
-    <button type="button" className="profile-trigger" onClick={() => setOpen(true)}>{avatar ? <img src={avatar} alt="" /> : <span>{initial}</span>}<b>{nickname}</b></button>
-    {open && <div className="modal-backdrop"><div className="result-card profile-modal" role="dialog" aria-modal="true"><button className="close" onClick={() => setOpen(false)}>×</button><span className="eyebrow">MY PROFILE</span><h2>프로필 편집</h2><div className="profile-preview">{avatar ? <img src={avatar} alt="프로필 미리보기" /> : <span>{initial}</span>}</div><input ref={fileRef} className="avatar-file-input" type="file" accept="image/*" onChange={(event) => void uploadAvatar(event.target.files?.[0])} /><button type="button" className="avatar-upload-button" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? "사진 처리 중…" : "사진 선택"}</button><p className="avatar-help">갤러리 또는 파일에서 선택하면 320px로 자동 압축됩니다.</p><label>닉네임<input value={name} maxLength={20} onChange={(event) => setName(event.target.value)} /></label><label>본인 소개<textarea value={intro} maxLength={120} rows={3} placeholder="나를 소개해 주세요" onChange={(event) => setIntro(event.target.value)} /><small>{intro.length}/120</small></label>{message && <p className="error">{message}</p>}<button className="submit" onClick={save} disabled={saving || uploading || name.trim().length < 2}>{saving ? "저장 중…" : "프로필 저장"}</button></div></div>}
+    <details className="account-menu" ref={menuRef} onKeyDown={(event) => {
+      if (event.key === "Escape" && event.currentTarget.open) {
+        event.currentTarget.open = false;
+        triggerRef.current?.focus();
+      }
+    }}>
+      <summary className="profile-trigger" ref={triggerRef} aria-label={`${nickname} 계정 메뉴`}>
+        {avatarUrl ? <img src={avatarUrl} alt="" /> : <span>{[...nickname][0]?.toUpperCase() ?? "C"}</span>}
+        <b>{nickname}</b><i aria-hidden="true" />
+      </summary>
+      <div className="account-menu-panel">
+        <button type="button" onClick={() => {
+          if (menuRef.current) menuRef.current.open = false;
+          setOpen(true);
+        }}>프로필 편집</button>
+        <form action="/auth/logout" method="post"><button type="submit">로그아웃</button></form>
+      </div>
+    </details>
+    {open && <div className="modal-backdrop"><div className="result-card profile-modal" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title"><button className="close" aria-label="닫기" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}>×</button><h2 id="edit-profile-title">프로필 편집</h2><div className="profile-preview">{avatar ? <img src={avatar} alt="프로필 미리보기" /> : <span>{initial}</span>}</div><input ref={fileRef} className="avatar-file-input" type="file" accept="image/*" onChange={(event) => void uploadAvatar(event.target.files?.[0])} /><button type="button" className="avatar-upload-button" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? "사진 처리 중…" : "사진 선택"}</button><p className="avatar-help">갤러리 또는 파일에서 선택하면 320px로 자동 압축됩니다.</p><label>닉네임<input value={name} maxLength={20} onChange={(event) => setName(event.target.value)} /></label><label>본인 소개<textarea value={intro} maxLength={120} rows={3} placeholder="나를 소개해 주세요" onChange={(event) => setIntro(event.target.value)} /><small>{intro.length}/120</small></label>{message && <p className="error">{message}</p>}<button className="submit" onClick={save} disabled={saving || uploading || name.trim().length < 2}>{saving ? "저장 중…" : "프로필 저장"}</button></div></div>}
   </>;
 }
